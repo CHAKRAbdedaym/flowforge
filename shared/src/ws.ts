@@ -1,3 +1,5 @@
+import type { ExecutionMode, ExecutionStatus, NodeRunStatus, SerializedError } from './workflow.js';
+
 /** Every server → client WebSocket message uses this envelope. */
 export interface WsEnvelope<TType extends string = string, TData = unknown> {
   type: TType;
@@ -8,12 +10,51 @@ export interface WsEnvelope<TType extends string = string, TData = unknown> {
   data: TData;
 }
 
+export interface ExecutionRef {
+  executionId: string;
+  workflowId: string | null;
+}
+
 export type ServerEvent =
   | WsEnvelope<'connection.ready', { userId: string; serverVersion: string }>
   | WsEnvelope<'pong', Record<string, never>>
-  | WsEnvelope<'error', { message: string }>;
+  | WsEnvelope<'error', { message: string }>
+  | WsEnvelope<'execution.queued', ExecutionRef & { mode: ExecutionMode }>
+  | WsEnvelope<'execution.started', ExecutionRef & { mode: ExecutionMode; startedAt: string }>
+  | WsEnvelope<'node.started', ExecutionRef & { nodeName: string; runIndex: number }>
+  | WsEnvelope<
+      'node.finished',
+      ExecutionRef & {
+        nodeName: string;
+        runIndex: number;
+        status: NodeRunStatus;
+        executionTime: number;
+        /** Number of items on each output. */
+        itemCounts: number[];
+        /** First items of the first non-empty output (JSON only, capped at ~2 KB). */
+        preview: unknown[];
+        error?: SerializedError;
+      }
+    >
+  | WsEnvelope<
+      'edge.data',
+      ExecutionRef & { from: { node: string; output: number }; to: { node: string; input: number }; itemCount: number }
+    >
+  | WsEnvelope<
+      'execution.finished',
+      ExecutionRef & {
+        status: ExecutionStatus;
+        startedAt: string;
+        stoppedAt: string;
+        lastNodeExecuted: string | null;
+        error?: SerializedError;
+      }
+    >;
 
 export type ServerEventType = ServerEvent['type'];
+
+/** Payload type of a given server event. */
+export type ServerEventData<T extends ServerEventType> = Extract<ServerEvent, { type: T }>['data'];
 
 export type WsRoom = `workflow:${string}` | `execution:${string}`;
 

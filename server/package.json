@@ -12,9 +12,14 @@
   },
   "dependencies": {
     "@flowforge/shared": "0.1.0",
+    "@jitl/quickjs-wasmfile-release-sync": "^0.32.0",
+    "acorn": "^8.19.0",
     "cookie": "^1.1.1",
     "dotenv": "^18.0.7",
     "express": "^5.3.0",
+    "jmespath": "^0.16.0",
+    "luxon": "^3.7.2",
+    "quickjs-emscripten-core": "^0.32.0",
     "ws": "^8.22.0",
     "zod": "^4.6.5"
   },
@@ -24,6 +29,8 @@
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
+    "@types/jmespath": "^0.15.2",
+    "@types/luxon": "^3.7.6",
     "@types/node": "^20.19.43",
     "@types/supertest": "^7.2.1",
     "@types/ws": "^8.18.2",

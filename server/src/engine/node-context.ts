@@ -1,0 +1,169 @@
+import type { BinaryRef, ExecutionMode, Item, JsonObject, RunData, TaskSource, WorkflowData, WorkflowNode } from '@flowforge/shared';
+import type { Logger } from '../logger.js';
+import type { BinaryStore } from './binary-store.js';
+import { NodeOperationError, toFlowError } from './errors.js';
+import type { ExpressionEngine, ExpressionScope } from './expressions/engine.js';
+import { getDefault, getPath, isNoExpression } from './params.js';
+import { resolvePairedItem } from './paired-items.js';
+import type { ExecuteContext, NodeHelpers, NodeType } from './types.js';
+
+export interface NodeContextOptions {
+  node: WorkflowNode;
+  type: NodeType;
+  workflow: WorkflowData;
+  mode: ExecutionMode;
+  executionId: string;
+  runIndex: number;
+  inputs: Item[][];
+  sources: (TaskSource | null)[];
+  runData: RunData;
+  nodeState: Map<string, object>;
+  signal: AbortSignal;
+  logger: Logger;
+  expressions: ExpressionEngine;
+  binaryStore: BinaryStore;
+  timezone: string;
+  variables: Record<string, string>;
+  env: Record<string, string> | null;
+}
+
+export class NodeExecutionContext implements ExecuteContext {
+  readonly node: WorkflowNode;
+  readonly workflow: WorkflowData;
+  readonly mode: ExecutionMode;
+  readonly executionId: string;
+  readonly runIndex: number;
+  readonly signal: AbortSignal;
+  readonly logger: Logger;
+  readonly helpers: NodeHelpers;
+  /** Items routed to the "error" output by forEachItem (continueErrorOutput). */
+  readonly errorItems: Item[] = [];
+  readonly logs: string[] = [];
+  private readonly scope: ExpressionScope;
+
+  constructor(private readonly o: NodeContextOptions) {
+    this.node = o.node;
+    this.workflow = o.workflow;
+    this.mode = o.mode;
+    this.executionId = o.executionId;
+    this.runIndex = o.runIndex;
+    this.signal = o.signal;
+    this.logger = o.logger;
+    this.scope = {
+      workflow: o.workflow,
+      runData: o.runData,
+      nodeName: o.node.name,
+      inputs: o.inputs,
+      sources: o.sources,
+      runIndex: o.runIndex,
+      mode: o.mode,
+      executionId: o.executionId,
+      timezone: o.timezone,
+      variables: o.variables,
+      env: o.env,
+    };
+    this.helpers = {
+      prepareBinaryData: (data, fileName, mimeType): Promise<BinaryRef> => o.binaryStore.store(o.executionId, data, fileName, mimeType),
+      getBinaryDataBuffer: async (itemIndex, property = 'data') => {
+        const ref = this.getInputData()[itemIndex]?.binary?.[property];
+        if (!ref) {
+          throw new NodeOperationError(`Item ${itemIndex} has no binary property "${property}"`, {
+            itemIndex,
+            hint: 'Check the name of the binary field in the INPUT panel.',
+          });
+        }
+        return o.binaryStore.read(ref);
+      },
+      returnJsonArray: (data: JsonObject | JsonObject[]) => (Array.isArray(data) ? data : [data]).map((json) => ({ json })),
+    };
+  }
+
+  getInputData(inputIndex = 0): Item[] {
+    return this.o.inputs[inputIndex] ?? [];
+  }
+
+  getInputCount(): number {
+    return this.o.type.description.inputs.filter((i) => i.type === 'main').length;
+  }
+
+  getRawParameter(name: string): unknown {
+    const value = getPath(this.node.parameters, name);
+    return value === undefined ? getDefault(this.o.type.properties, name) : value;
+  }
+
+  getNodeParameter<T = unknown>(name: string, itemIndex: number, fallback?: T): T {
+    const raw = this.getRawParameter(name);
+    if (raw === undefined) return fallback as T;
+    if (isNoExpression(this.o.type.properties, name)) return raw as T;
+    try {
+      return this.o.expressions.resolve(raw, this.scope, itemIndex) as T;
+    } catch (err) {
+      const e = toFlowError(err, this.node.name);
+      e.itemIndex ??= itemIndex;
+      e.description ??= `Parameter "${name}"`;
+      throw e;
+    }
+  }
+
+  evaluateExpression(expression: string, itemIndex: number): unknown {
+    return this.o.expressions.evaluate(expression, this.scope, itemIndex);
+  }
+
+  continueOnFail(): boolean {
+    return this.node.onError === 'continueRegularOutput' || this.node.onError === 'continueErrorOutput';
+  }
+
+  async forEachItem(
+    fn: (item: Item, itemIndex: number) => Promise<Item | Item[] | null | undefined> | Item | Item[] | null | undefined,
+  ): Promise<Item[]> {
+    const out: Item[] = [];
+    const items = this.getInputData();
+    for (let i = 0; i < items.length; i++) {
+      if (this.signal.aborted) throw this.signal.reason;
+      try {
+        const result = await fn(items[i]!, i);
+        if (result === null || result === undefined) continue;
+        for (const item of Array.isArray(result) ? result : [result]) {
+          out.push(item.pairedItem === undefined && item !== items[i] ? { ...item, pairedItem: { item: i } } : item);
+        }
+      } catch (err) {
+        const error = toFlowError(err, this.node.name);
+        error.itemIndex ??= i;
+        if (this.node.onError === 'continueRegularOutput') {
+          out.push({ json: { error: error.message }, pairedItem: { item: i } });
+        } else if (this.node.onError === 'continueErrorOutput') {
+          this.errorItems.push({ ...items[i]!, json: { ...items[i]!.json, error: error.message }, pairedItem: { item: i } });
+        } else {
+          throw error;
+        }
+      }
+    }
+    return out;
+  }
+
+  getNodeState<T extends object>(): T {
+    let state = this.o.nodeState.get(this.node.name);
+    if (!state) {
+      state = {};
+      this.o.nodeState.set(this.node.name, state);
+    }
+    return state as T;
+  }
+
+  getNodeOutput(nodeName: string): Item[] | undefined {
+    const runs = this.o.runData[nodeName];
+    return runs?.[runs.length - 1]?.data.main[0];
+  }
+
+  getPairedItem(nodeName: string, itemIndex: number): Item {
+    return resolvePairedItem(this.o.runData, nodeName, this.o.inputs, this.o.sources, itemIndex);
+  }
+
+  getTimezone(): string {
+    return this.o.timezone;
+  }
+
+  addLog(line: string): void {
+    if (this.logs.length < 500) this.logs.push(line.length > 2000 ? `${line.slice(0, 2000)}…` : line);
+  }
+}

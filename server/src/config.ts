@@ -16,7 +16,28 @@ export interface AppConfig {
   webDistDir: string;
   sessionTtlMs: number;
   logLevel: LogLevel;
+  /** Default execution timeout (a workflow setting can override it). 0 = no timeout. */
+  executionTimeoutMs: number;
+  maxConcurrentExecutions: number;
+  /** Loop guard: a run stops after this many node executions. */
+  maxNodeRuns: number;
+  /** IANA timezone used for $now, schedules and dates. */
+  timezone: string;
+  /** Expose the development endpoint POST /api/dev/run. */
+  devApi: boolean;
+  /** Allow `$env` in expressions (FlowForge secrets are always hidden). */
+  allowEnvAccess: boolean;
 }
+
+const isTimezone = (tz: string) => {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+};
+const bool = z.enum(['true', 'false', '1', '0']).transform((v) => v === 'true' || v === '1');
 
 export class ConfigError extends Error {}
 
@@ -27,6 +48,15 @@ const EnvSchema = z.object({
   FLOWFORGE_DATA_DIR: z.string().optional(),
   SESSION_TTL_DAYS: z.coerce.number().positive().max(365).default(7),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  EXECUTION_TIMEOUT_SECONDS: z.coerce.number().min(0).max(86_400).default(300),
+  MAX_CONCURRENT_EXECUTIONS: z.coerce.number().int().min(1).max(100).default(5),
+  MAX_NODE_RUNS: z.coerce.number().int().min(10).max(1_000_000).default(10_000),
+  GENERIC_TIMEZONE: z
+    .string()
+    .refine(isTimezone, 'must be an IANA timezone such as Europe/Paris')
+    .default(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'),
+  FLOWFORGE_DEV_API: bool.default(true),
+  FLOWFORGE_ALLOW_ENV_ACCESS: bool.default(true),
 });
 
 /** Loads `.env` from the repo root (never overriding real environment variables). */
@@ -61,5 +91,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     webDistDir: WEB_DIST_DIR,
     sessionTtlMs: e.SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
     logLevel: e.LOG_LEVEL,
+    executionTimeoutMs: e.EXECUTION_TIMEOUT_SECONDS * 1000,
+    maxConcurrentExecutions: e.MAX_CONCURRENT_EXECUTIONS,
+    maxNodeRuns: e.MAX_NODE_RUNS,
+    timezone: e.GENERIC_TIMEZONE,
+    devApi: e.FLOWFORGE_DEV_API,
+    allowEnvAccess: e.FLOWFORGE_ALLOW_ENV_ACCESS,
   };
 }

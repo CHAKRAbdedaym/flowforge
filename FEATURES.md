@@ -23,28 +23,32 @@
 - [x] P2 Playwright smoke tests `npm run test:e2e` (Ph 0) — 3 specs pass (`PW_CHANNEL=chrome` uses the installed Chrome)
 
 ## Engine (all P0)
-- [ ] P0 Node registry auto-loads one-file nodes and validates their schema (Ph 1)
-- [ ] P0 Items data model `{json, binary}` arrays, multiple inputs / outputs per node (Ph 1)
-- [ ] P0 Paired items (`$('X').item` lineage) (Ph 1)
-- [ ] P0 Branch execution order (depth-first, top-to-bottom like n8n v1) (Ph 1)
-- [ ] P0 Multi-input waiting + run with missing inputs when a branch is not taken (Ph 1)
-- [ ] P0 Loops (node runs multiple times, run index, loop guard) (Ph 1)
-- [ ] P0 Expressions `{{ }}`: `$json`, `$binary`, `$input`, `$('X')`, `$node["X"].json`, `$items()`, `$prevNode`, `$runIndex`, `$itemIndex` (Ph 1)
-- [ ] P0 Expressions: `$now`, `$today`, `DateTime` (Luxon), `$workflow`, `$execution`, `$env`, `$vars` (Ph 1)
-- [ ] P0 Expression helpers: `$jmespath`, `$if`, `$ifEmpty`, `$min`, `$max` + data transformation functions (Ph 1)
-- [ ] P0 Expression sandbox (AST guard + timeout) with clear error messages (Ph 1)
-- [ ] P0 Node setting: Retry on fail (max tries, wait between tries) (Ph 1)
-- [ ] P0 Node setting: On error → stop / continue / continue using error output (Ph 1)
-- [ ] P0 Node setting: Always output data (Ph 1)
-- [ ] P0 Node setting: Execute once (Ph 1)
-- [ ] P0 Node setting: Disabled (pass-through) (Ph 1)
-- [ ] P0 Pinned data (manual runs only) (Ph 1)
-- [ ] P0 Execute single node / partial execution reusing previous data (Ph 1)
-- [ ] P0 Execution timeout + cancel (Ph 1)
-- [ ] P0 Execution queue with concurrency limit (Ph 1)
-- [ ] P0 Binary data stored on disk, preview + download (Ph 1)
-- [ ] P0 Executions persisted with per-node run data (Ph 1)
-- [ ] P0 Crash recovery: running executions marked `crashed` on boot (Ph 1)
+- [x] P0 Node registry auto-loads one-file nodes and validates their schema (Ph 1) — test: `nodes.test.ts` (registry), served at `GET /api/node-types` (`api-engine.test.ts`)
+- [x] P0 Items data model `{json, binary}` arrays, multiple inputs / outputs per node (Ph 1) — test: `engine.test.ts`
+- [x] P0 Paired items (`$('X').item` lineage) (Ph 1) — test: `engine.test.ts` (through IF, Sort, disabled node), `expressions.test.ts`
+- [x] P0 Branch execution order (depth-first, top-to-bottom like n8n v1) (Ph 1) — test: `engine.test.ts`; manual: fixture 02
+- [x] P0 Multi-input waiting + run with missing inputs when a branch is not taken (Ph 1) — test: `engine.test.ts`; manual: fixture 03
+- [x] P0 Loops (node runs multiple times, run index, loop guard) (Ph 1) — test: `engine.test.ts`; manual: fixture 04
+- [x] P0 Expressions `{{ }}`: `$json`, `$binary`, `$input`, `$('X')`, `$node["X"].json`, `$items()`, `$prevNode`, `$runIndex`, `$itemIndex` (Ph 1) — test: `expressions.test.ts`
+- [x] P0 Expressions: `$now`, `$today`, `DateTime` (Luxon), `$workflow`, `$execution`, `$env`, `$vars` (Ph 1) — test: `expressions.test.ts` (`$vars` values come from the Variables page in Ph 7; secrets are hidden from `$env`)
+- [x] P0 Expression helpers: `$jmespath`, `$if`, `$ifEmpty`, `$min`, `$max` + data transformation functions (Ph 1) — test: `expressions.test.ts` (~45 string/array/number/object functions)
+- [x] P0 Expression sandbox (AST guard + separate realm + timeout) with clear error messages (Ph 1) — test: `expressions.test.ts` (17 escape attempts incl. constructor, `__proto__`, process, require, computed keys, bridge errors, prototype pollution); manual: preview API
+- [x] P0 Node setting: Retry on fail (max tries, wait between tries) (Ph 1) — test: `engine.test.ts`
+- [x] P0 Node setting: On error → stop / continue / continue using error output (Ph 1) — test: `engine.test.ts` (whole node and per item), `nodes.test.ts` (Code per item); manual: fixture 05
+- [x] P0 Node setting: Always output data (Ph 1) — test: `engine.test.ts`
+- [x] P0 Node setting: Execute once (Ph 1) — test: `engine.test.ts`
+- [x] P0 Node setting: Disabled (pass-through) (Ph 1) — test: `engine.test.ts`
+- [x] P0 Pinned data used by the engine (manual runs only) (Ph 1) — test: `engine.test.ts` (pin/unpin buttons come with the editor, Ph 2)
+- [x] P0 Execute single node / partial execution reusing previous data (Ph 1) — test: `engine.test.ts`; manual: `?destinationNode=`
+- [x] P0 Execution timeout + cancel (Ph 1) — test: `engine.test.ts`, `api-engine.test.ts`; manual: endless Code loop timed out at 2 s / stopped
+- [x] P0 Execution queue with concurrency limit, manual runs first (Ph 1) — test: `api-engine.test.ts`
+- [x] P0 Binary data stored on disk + download API with safe headers (Ph 1) — test: `nodes.test.ts`, `api-engine.test.ts`
+- [ ] P0 Binary data preview in the output panel (Ph 2)
+- [x] P0 Executions persisted with per-node run data + event log (Ph 1) — test: `api-engine.test.ts`; manual: `GET /api/executions`
+- [x] P0 Crash recovery: running executions marked `crashed` on boot (Ph 1) — test: `api-engine.test.ts`
+- [x] P0 Live execution events over WebSocket (`execution.*`, `node.started/finished` with preview, `edge.data`) (Ph 1) — test: `api-engine.test.ts` (order, seq, previews)
+- [x] P0 Expression preview API for the editor (`POST /api/expressions/preview`) (Ph 1) — test: `api-engine.test.ts`; manual: curl
+- [x] P2 Dev endpoint `POST /api/dev/run` to run a workflow JSON with curl (disable with `FLOWFORGE_DEV_API=false`) (Ph 1) — test: `api-engine.test.ts` (8 fixtures)
 - [ ] P0 Error workflow (Error Trigger receives failed execution info) (Ph 3)
 - [ ] P0 Sub-workflows (Execute Workflow + Execute Workflow Trigger) (Ph 3)
 
@@ -68,7 +72,7 @@
 - [ ] P0 Activate / deactivate workflow with visible status and activation errors (Ph 3)
 
 ## Triggers
-- [ ] P0 Manual Trigger (Ph 1)
+- [x] P0 Manual Trigger (Ph 1) — test: `engine.test.ts`
 - [ ] P0 Webhook: all HTTP methods, path params (Ph 3)
 - [ ] P0 Webhook: separate test URL (`/webhook-test`, listen 120 s) and production URL (`/webhook`) (Ph 3)
 - [ ] P0 Webhook response mode: Immediately (Ph 3)
@@ -88,22 +92,22 @@
 - [ ] P2 Test mode "Listen for test event" for every trigger type (Ph 3/5)
 
 ## Flow nodes
-- [ ] P0 IF (Ph 1)
-- [ ] P0 Switch (rules + expression mode, fallback output) (Ph 1)
-- [ ] P0 Merge: append, combine by matching fields, by position, all combinations, choose branch (Ph 1)
-- [ ] P0 No Operation (Ph 1)
+- [x] P0 IF (Ph 1) — test: `engine.test.ts`, `conditions.test.ts` (shared condition engine, strict/loose types)
+- [x] P0 Switch (rules + expression mode, fallback output) (Ph 1) — test: `nodes.test.ts`; manual: fixture 07
+- [x] P0 Merge: append, combine by matching fields (5 join modes), by position, all combinations, choose branch (Ph 1) — test: `engine.test.ts`; manual: fixtures 03, 06
+- [x] P0 No Operation (Ph 1) — test: `engine.test.ts`
 - [ ] P0 Sticky Note (Ph 2)
-- [ ] P2 Filter (kept / discarded) (Ph 1)
-- [ ] P2 Loop Over Items (Ph 1)
-- [ ] P2 Stop and Error (Ph 1)
+- [x] P2 Filter (kept / discarded) (Ph 1) — test: `nodes.test.ts`
+- [x] P2 Loop Over Items (Ph 1) — test: `engine.test.ts`; manual: fixture 04
+- [x] P2 Stop and Error (Ph 1) — test: `nodes.test.ts`; manual: fixture 08
 - [ ] P2 Wait: interval, specific time, webhook resume, form resume; persisted across restart (Ph 3)
 - [ ] P2 Execute Workflow (database / JSON source, once / per item, wait or not) (Ph 3)
 
 ## Data nodes
-- [ ] P0 Set / Edit Fields (manual mapping + JSON mode) (Ph 1)
-- [ ] P0 Code (sandboxed JS, QuickJS; all items / each item) (Ph 1)
-- [ ] P2 Limit (Ph 1)
-- [ ] P2 Sort (Ph 1)
+- [x] P0 Set / Edit Fields (manual mapping + JSON mode) (Ph 1) — test: `nodes.test.ts`
+- [x] P0 Code (sandboxed JS, QuickJS in worker threads; all items / each item; time + memory limits) (Ph 1) — test: `nodes.test.ts` (no require/process/fetch, endless loop, memory bomb, cancel, line numbers). Known gap: Luxon `DateTime` is not available inside Code (QuickJS has no Intl)
+- [x] P2 Limit (Ph 1) — test: `nodes.test.ts`
+- [x] P2 Sort (Ph 1) — test: `nodes.test.ts`
 - [ ] P2 Aggregate (Ph 4)
 - [ ] P2 Split Out (Ph 4)
 - [ ] P2 Remove Duplicates (Ph 4)

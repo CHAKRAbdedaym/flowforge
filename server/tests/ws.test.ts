@@ -9,7 +9,7 @@ let base: string;
 let cookie: string;
 
 beforeEach(async () => {
-  t = makeTestApp();
+  t = await makeTestApp();
   base = await listen(t);
   const res = await request(t.app).post('/api/auth/setup').send(OWNER);
   cookie = (res.headers['set-cookie']?.[0] ?? '').split(';')[0]!;

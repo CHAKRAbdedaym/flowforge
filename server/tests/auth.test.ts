@@ -4,8 +4,8 @@ import { SESSION_COOKIE } from '@flowforge/shared';
 import { makeTestApp, OWNER, type TestApp } from './helpers.js';
 
 let t: TestApp;
-beforeEach(() => {
-  t = makeTestApp();
+beforeEach(async () => {
+  t = await makeTestApp();
 });
 afterEach(async () => {
   await t.close();

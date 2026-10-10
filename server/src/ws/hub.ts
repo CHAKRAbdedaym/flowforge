@@ -6,6 +6,7 @@ import {
   WS_PATH,
   isWsRoom,
   type ClientMessage,
+  type ServerEventData,
   type ServerEvent,
   type WsRoom,
 } from '@flowforge/shared';
@@ -20,8 +21,6 @@ interface ClientState {
 
 const HEARTBEAT_MS = 30_000;
 const MAX_MESSAGE_BYTES = 64 * 1024;
-
-type EventOf<T extends ServerEvent['type']> = Extract<ServerEvent, { type: T }>;
 
 /**
  * Single `/ws` endpoint. Clients authenticate with the session cookie during the upgrade,
@@ -45,7 +44,7 @@ export class WsHub {
   }
 
   /** Sends an event to every client subscribed to `room`. */
-  publish<T extends ServerEvent['type']>(room: WsRoom, type: T, data: EventOf<T>['data'], seq?: number): void {
+  publish<T extends ServerEvent['type']>(room: WsRoom, type: T, data: ServerEventData<T>, seq?: number): void {
     const payload = JSON.stringify({ type, ts: Date.now(), seq, data });
     for (const [socket, state] of this.clients) {
       if (state.rooms.has(room) && socket.readyState === WebSocket.OPEN) socket.send(payload);
@@ -53,7 +52,7 @@ export class WsHub {
   }
 
   /** Sends an event to every connected client. */
-  broadcast<T extends ServerEvent['type']>(type: T, data: EventOf<T>['data']): void {
+  broadcast<T extends ServerEvent['type']>(type: T, data: ServerEventData<T>): void {
     const payload = JSON.stringify({ type, ts: Date.now(), data });
     for (const socket of this.clients.keys()) {
       if (socket.readyState === WebSocket.OPEN) socket.send(payload);
@@ -119,7 +118,7 @@ export class WsHub {
     }
   }
 
-  private send<T extends ServerEvent['type']>(socket: WebSocket, type: T, data: EventOf<T>['data']): void {
+  private send<T extends ServerEvent['type']>(socket: WebSocket, type: T, data: ServerEventData<T>): void {
     if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type, ts: Date.now(), data }));
   }
 

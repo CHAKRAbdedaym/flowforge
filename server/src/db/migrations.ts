@@ -43,6 +43,37 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: 2,
+    name: 'executions',
+    sql: `
+      CREATE TABLE executions (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        workflow_id         TEXT,
+        workflow_name       TEXT NOT NULL,
+        mode                TEXT NOT NULL,
+        status              TEXT NOT NULL,
+        created_at          TEXT NOT NULL,
+        started_at          TEXT,
+        stopped_at          TEXT,
+        wait_till           TEXT,
+        parent_execution_id INTEGER,
+        retry_of            INTEGER,
+        last_node           TEXT,
+        error_message       TEXT
+      );
+      CREATE INDEX idx_executions_workflow ON executions(workflow_id, id DESC);
+      CREATE INDEX idx_executions_status ON executions(status);
+
+      CREATE TABLE execution_data (
+        execution_id INTEGER PRIMARY KEY REFERENCES executions(id) ON DELETE CASCADE,
+        workflow     TEXT NOT NULL,
+        run_data     TEXT NOT NULL DEFAULT '{}',
+        error        TEXT,
+        events       TEXT NOT NULL DEFAULT '[]'
+      );
+    `,
+  },
 ];
 
 export function runMigrations(db: DB, migrations: Migration[] = MIGRATIONS): number {

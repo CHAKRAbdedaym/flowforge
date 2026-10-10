@@ -24,6 +24,23 @@ The first `npm start` builds the app (15–30 seconds). Later starts are instant
 changed. Data is stored in `./data`. Configuration is optional: copy `.env.example` to `.env` to change the
 port or the public URL.
 
+## Run a workflow without the editor (development)
+
+Until the visual editor exists you can run any workflow JSON with curl. Example workflows are in
+`server/tests/fixtures/workflows/`.
+
+```bash
+# sign in once (cookie saved in cookies.txt)
+curl -c cookies.txt -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"YourPassword1"}' http://localhost:5679/api/auth/login
+# run a workflow and print a summary + the last node's output
+curl -b cookies.txt -H 'Content-Type: application/json' \
+  --data @server/tests/fixtures/workflows/01-hello-world.json http://localhost:5679/api/dev/run
+```
+
+Options (query string): `destinationNode=<name>` runs only up to that node, `wait=false` returns the
+execution id immediately, `startNode=<trigger>` picks the trigger. Full details: `GET /api/executions/<id>`.
+
 ## Troubleshooting
 
 - **"No SQLite driver could be loaded"** at startup: during `npm install`, `better-sqlite3` downloads a

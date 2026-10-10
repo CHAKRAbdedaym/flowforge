@@ -1,11 +1,16 @@
 import express, { Router } from 'express';
 import { APP_NAME, APP_VERSION, type HealthResponse, type SystemInfo } from '@flowforge/shared';
 import { requireAuth, sessionMiddleware } from '../auth/session.js';
-import type { AppContext } from '../context.js';
+import type { AppServices } from '../app.js';
 import { notFound } from '../http/errors.js';
 import { authRouter } from './auth.js';
+import { binaryDataRouter } from './binary-data.js';
+import { devRouter } from './dev.js';
+import { executionsRouter } from './executions.js';
+import { expressionsRouter } from './expressions.js';
+import { nodeTypesRouter } from './node-types.js';
 
-export function apiRouter(ctx: AppContext): Router {
+export function apiRouter(ctx: AppServices): Router {
   const router = Router();
   router.use(express.json({ limit: '16mb' }));
   router.use(sessionMiddleware(ctx));
@@ -42,6 +47,12 @@ export function apiRouter(ctx: AppContext): Router {
     };
     res.json(body);
   });
+
+  router.use('/node-types', nodeTypesRouter(ctx));
+  router.use('/expressions', expressionsRouter(ctx));
+  router.use('/executions', executionsRouter(ctx));
+  router.use('/binary-data', binaryDataRouter(ctx));
+  if (ctx.config.devApi) router.use('/dev', devRouter(ctx));
 
   router.use((req, _res, next) => next(notFound(`API route not found: ${req.method} ${req.originalUrl}`)));
   return router;

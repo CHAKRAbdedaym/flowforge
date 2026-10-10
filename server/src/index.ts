@@ -6,6 +6,7 @@ import { ConfigError, loadConfig, loadDotEnv } from './config.js';
 import { createContext } from './context.js';
 import { openDatabase } from './db/index.js';
 import { createLogger } from './logger.js';
+import { loadNodeRegistry } from './nodes/registry.js';
 
 function fatal(message: string): never {
   console.error(`\n✖ ${message}\n`);
@@ -33,9 +34,14 @@ startupStep(() => mkdirSync(config.dataDir, { recursive: true }));
 const db = startupStep(() => openDatabase(join(config.dataDir, 'flowforge.db')));
 logger.debug(`SQLite driver: ${db.driver}`);
 
-const ctx = createContext(config, db, logger);
+const registry = await loadNodeRegistry().catch((err: unknown) => fatal(`Could not load the nodes: ${err instanceof Error ? err.message : String(err)}`));
+logger.debug(`Loaded ${registry.size} node types`);
+
+const ctx = createContext(config, db, logger, registry);
 const removed = ctx.sessions.deleteExpired();
 if (removed) logger.debug(`Removed ${removed} expired session(s)`);
+const crashed = ctx.executionsRepo.markUnfinishedAsCrashed();
+if (crashed) logger.warn(`${crashed} execution(s) were interrupted by the last shutdown and are marked as crashed`);
 
 const flowforge = createApp(ctx);
 

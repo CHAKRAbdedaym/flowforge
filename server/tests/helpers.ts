@@ -7,6 +7,7 @@ import { loadConfig, type AppConfig } from '../src/config.js';
 import { createContext, type AppContext } from '../src/context.js';
 import { openDatabase } from '../src/db/index.js';
 import { silentLogger } from '../src/logger.js';
+import { getTestRegistry } from './engine-helpers.js';
 
 export const OWNER = {
   email: 'owner@flowforge.test',
@@ -28,14 +29,14 @@ export interface TestApp extends FlowForgeApp {
   ctx: AppContext;
 }
 
-export function makeTestApp(overrides: Partial<AppConfig> = {}): TestApp {
+export async function makeTestApp(overrides: Partial<AppConfig> = {}): Promise<TestApp> {
   const config: AppConfig = {
     ...loadConfig({ HOST: '127.0.0.1' }),
     dataDir: mkdtempSync(join(tmpdir(), 'ff-data-')),
     webDistDir: fakeWebDist(),
     ...overrides,
   };
-  const ctx = createContext(config, openDatabase(':memory:'), silentLogger);
+  const ctx = createContext(config, openDatabase(':memory:'), silentLogger, await getTestRegistry());
   return { ...createApp(ctx), ctx };
 }
 
