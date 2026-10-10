@@ -204,3 +204,27 @@ test('workflows list: rename and delete', async ({ page }) => {
   await page.getByTestId('confirm-ok').click();
   await expect(renamed).toHaveCount(0);
 });
+
+test('nodes with outputs computed on the server (Switch) draw all their connections', async ({ page }) => {
+  const rule = (value: string) => ({
+    conditions: { conditions: [{ leftValue: '={{ $json.p }}', rightValue: value, operator: { type: 'string', operation: 'equals' } }], combinator: 'and' },
+    renameOutput: true,
+    outputKey: value,
+  });
+  await openNewWorkflow(page, {
+    name: 'E2E switch edges',
+    nodes: [
+      { id: '1', name: 'Start', type: 'flowforge.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+      { id: '2', name: 'Route', type: 'flowforge.switch', typeVersion: 1, position: [240, 0], parameters: { rules: { values: [rule('high'), rule('low')] }, options: { fallbackOutput: 'extra' } } },
+      { id: '3', name: 'A', type: 'flowforge.noOp', typeVersion: 1, position: [480, -160], parameters: {} },
+      { id: '4', name: 'B', type: 'flowforge.noOp', typeVersion: 1, position: [480, 0], parameters: {} },
+      { id: '5', name: 'C', type: 'flowforge.noOp', typeVersion: 1, position: [480, 160], parameters: {} },
+    ],
+    connections: {
+      Start: { main: [[{ node: 'Route', type: 'main', index: 0 }]] },
+      Route: { main: [[{ node: 'A', type: 'main', index: 0 }], [{ node: 'B', type: 'main', index: 0 }], [{ node: 'C', type: 'main', index: 0 }]] },
+    },
+  });
+  await expect(canvasNode(page, 'Route').getByText('Fallback')).toBeVisible();
+  await expect(edges(page)).toHaveCount(4);
+});

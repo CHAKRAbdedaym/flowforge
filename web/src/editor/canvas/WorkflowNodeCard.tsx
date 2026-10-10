@@ -1,5 +1,5 @@
-import { memo, useMemo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { memo, useEffect, useMemo } from 'react';
+import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { Check, CircleAlert, LoaderCircle, Pin, Plus, PowerOff } from 'lucide-react';
 import { cn } from '../../components/ui/cn';
 import { iconFor, isTriggerType, resolveSubtitle, staticOutputs } from '../../lib/node-types';
@@ -19,6 +19,13 @@ export const WorkflowNodeCard = memo(function WorkflowNodeCard({ id, selected }:
   const connections = useEditor((s) => s.connections);
   const types = useNodeTypeMap();
   const type = node ? types.get(node.type) : undefined;
+  const updateInternals = useUpdateNodeInternals();
+  const handleKey = node ? `${(type?.inputs ?? []).length}:${(dynamic ?? staticOutputs(type, node)).length}` : '';
+  // Switch/Filter outputs arrive from the server after the first render: re-measure the handles,
+  // otherwise React Flow cannot draw the connections attached to the new handles.
+  useEffect(() => {
+    updateInternals(id);
+  }, [handleKey, id, updateInternals]);
   const connectedOutputs = useMemo(
     () => new Set(node ? listEdges(connections).filter((e) => e.source === node.name).map((e) => e.output) : []),
     [connections, node],

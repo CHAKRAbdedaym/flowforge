@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import {
   Background,
   BackgroundVariant,
@@ -6,6 +6,7 @@ import {
   Panel,
   ReactFlow,
   SelectionMode,
+  useNodesInitialized,
   useReactFlow,
   type Connection,
   type Edge,
@@ -62,6 +63,16 @@ export function Canvas({ types }: { types: Map<string, NodeTypeInfo> }) {
   const [minimap, setMinimap] = useState(true);
   const rf = useReactFlow();
   useDynamicOutputs(types);
+
+  // Fit the whole workflow once React Flow has measured the nodes (the fitView prop can run too early).
+  const initialized = useNodesInitialized();
+  const fitted = useRef(false);
+  useEffect(() => {
+    if (initialized && !fitted.current) {
+      fitted.current = true;
+      requestAnimationFrame(() => void rf.fitView({ padding: 0.25, maxZoom: 1 }));
+    }
+  }, [initialized, rf]);
 
   const byName = useMemo(() => new Map(nodes.map((n) => [n.name, n])), [nodes]);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
@@ -227,6 +238,7 @@ export function Canvas({ types }: { types: Map<string, NodeTypeInfo> }) {
             <MiniMap
               pannable
               zoomable
+              style={{ width: 150, height: 96 }}
               className="!rounded-lg !border !border-line !bg-panel"
               maskColor="rgba(10,10,14,0.6)"
               nodeColor={(n) => (n.type === 'sticky' ? '#5a5030' : '#3d3d4a')}
@@ -304,8 +316,16 @@ function CanvasButton({ children, onClick, title, testId }: { children: React.Re
   );
 }
 
+/** Adds a sticky note near `at`, moved up until it does not cover a node. */
 export function addSticky(types: Map<string, NodeTypeInfo>, at: { x: number; y: number }): WorkflowNode | undefined {
   const type = types.get(STICKY);
   if (!type) return undefined;
-  return editor.addNode(type, { position: [at.x - 120, at.y - 80], connectFrom: null });
+  const [w, h] = [240, 160];
+  const blockers = useEditor.getState().nodes.filter((n) => n.type !== STICKY);
+  const overlaps = (x: number, y: number) =>
+    blockers.some((n) => x < n.position[0] + 150 && x + w > n.position[0] - 50 && y < n.position[1] + 150 && y + h > n.position[1] - 20);
+  let x = Math.round(at.x - w / 2);
+  let y = Math.round(at.y - h / 2);
+  for (let i = 0; i < 30 && overlaps(x, y); i++) y -= 60;
+  return editor.addNode(type, { position: [x, y], connectFrom: null });
 }

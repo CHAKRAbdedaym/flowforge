@@ -38,7 +38,7 @@ export function ExecutionLog() {
         <span className="ml-auto text-subtle">{open ? <ChevronDown size={15} /> : <ChevronUp size={15} />}</span>
       </button>
       {open && (
-        <div className="max-h-48 overflow-y-auto border-t border-line px-2 py-1">
+        <div className="max-h-40 overflow-y-auto border-t border-line px-2 py-1">
           {ex.log.length === 0 && <div className="px-2 py-2 text-[12px] text-subtle">Waiting for the first node…</div>}
           {ex.log.map((entry, i) => (
             <button

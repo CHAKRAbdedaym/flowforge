@@ -8,7 +8,7 @@ export default defineNode({
     type: 'flowforge.filter',
     displayName: 'Filter',
     description: 'Keeps only the items that match the conditions.',
-    icon: 'lucide:filter',
+    icon: 'lucide:funnel',
     group: 'flow',
     version: 1,
     defaults: { name: 'Filter', color: '#229eff' },

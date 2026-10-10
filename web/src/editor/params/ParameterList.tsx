@@ -425,7 +425,7 @@ function ConditionsInput({ value, onChange, testId }: { value: ConditionsValue |
                 <Field label="Value" compact value={c.leftValue} kind="other" onChange={(v) => set({ leftValue: v })} testId={`${testId}-${i}-left`}>
                   <input className={inputClass} placeholder="value 1" value={String(c.leftValue ?? '')} onChange={(e) => set({ leftValue: e.target.value })} />
                 </Field>
-                <div className={cn('grid gap-1.5', single ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)]')}>
+                <div className={cn('grid gap-1.5', single ? 'grid-cols-1' : 'grid-cols-[minmax(0,3fr)_minmax(0,2fr)]')}>
                 <select
                   className={inputClass}
                   data-testid={`${testId}-${i}-operator`}
