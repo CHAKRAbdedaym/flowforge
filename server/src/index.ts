@@ -40,8 +40,6 @@ logger.debug(`Loaded ${registry.size} node types`);
 const ctx = createContext(config, db, logger, registry);
 const removed = ctx.sessions.deleteExpired();
 if (removed) logger.debug(`Removed ${removed} expired session(s)`);
-const crashed = ctx.executionsRepo.markUnfinishedAsCrashed();
-if (crashed) logger.warn(`${crashed} execution(s) were interrupted by the last shutdown and are marked as crashed`);
 
 const flowforge = createApp(ctx);
 
@@ -54,6 +52,7 @@ flowforge.server.on('error', (err: NodeJS.ErrnoException) => {
 });
 
 flowforge.server.listen(config.port, config.host, () => {
+  void flowforge.boot().catch((err: unknown) => logger.error('Startup tasks failed', err));
   const lines = [
     '',
     `  ${APP_NAME} v${APP_VERSION} is running`,

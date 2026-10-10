@@ -29,7 +29,7 @@ import {
   type EdgeRef,
 } from './graph';
 
-export type LiveStatus = 'running' | NodeRunStatus;
+export type LiveStatus = 'running' | 'waiting' | NodeRunStatus;
 
 export interface NodeLive {
   status: LiveStatus;
@@ -58,6 +58,8 @@ export interface ExecutionUi {
   startedAt?: number;
   finishedAt?: number;
   error?: SerializedError | null;
+  /** Set while the execution is paused by a Wait node. */
+  waiting?: { node: string; till: string | null; kind: 'time' | 'webhook' | 'form'; resumeUrl: string };
   nodes: Record<string, NodeLive>;
   /** Item counts and particle triggers per edge key. */
   edges: Record<string, { count: number; key: number }>;
@@ -72,7 +74,7 @@ interface Snapshot {
   settings: WorkflowSettings;
 }
 
-const ACTIVE: RunState[] = ['starting', 'queued', 'running'];
+const ACTIVE: RunState[] = ['starting', 'queued', 'running', 'waiting'];
 export const isRunning = (s: RunState) => ACTIVE.includes(s);
 
 const emptyExecution = (): ExecutionUi => ({ id: null, status: 'idle', lastSeq: 0, nodes: {}, edges: {}, log: [] });
@@ -86,6 +88,13 @@ export interface EditorState {
   settings: WorkflowSettings;
   pinData: Record<string, Item[]>;
   dirty: boolean;
+  /** Activation state (from the server). */
+  active: boolean;
+  activationError: string | null;
+  triggerError: string | null;
+  /** "Listen for test event" in progress. */
+  listening: { nodeName: string; testUrl?: string; method?: string; expiresAt?: string } | null;
+  settingsOpen: boolean;
   /** Selected node ids. */
   selected: string[];
   past: Snapshot[];
@@ -114,6 +123,11 @@ const initial = (): EditorState => ({
   settings: {},
   pinData: {},
   dirty: false,
+  active: false,
+  activationError: null,
+  triggerError: null,
+  listening: null,
+  settingsOpen: false,
   selected: [],
   past: [],
   future: [],
@@ -188,7 +202,26 @@ export const editor = {
       connections: record.connections,
       settings: record.settings ?? {},
       pinData: record.pinData ?? {},
+      active: record.active,
+      activationError: record.activationError,
+      triggerError: record.triggerError,
     });
+  },
+
+  setActivation(info: { active: boolean; activationError?: string | null; triggerError?: string | null }) {
+    set((s) => ({
+      active: info.active,
+      activationError: info.activationError === undefined ? s.activationError : info.activationError,
+      triggerError: info.triggerError === undefined ? s.triggerError : info.triggerError,
+    }));
+  },
+
+  setSettings(settings: WorkflowSettings) {
+    commit(() => ({ settings }));
+  },
+
+  setListening(listening: EditorState['listening']) {
+    set({ listening });
   },
 
   markSaved(record: WorkflowRecord) {
@@ -414,7 +447,7 @@ export const editor = {
     set({ creator: { open: false } });
   },
 
-  setUi(patch: Partial<Pick<EditorState, 'paletteOpen' | 'helpOpen' | 'logOpen'>>) {
+  setUi(patch: Partial<Pick<EditorState, 'paletteOpen' | 'helpOpen' | 'logOpen' | 'settingsOpen'>>) {
     set(patch);
   },
 
@@ -430,9 +463,26 @@ export const editor = {
 
   /** Applies a live event. Returns what the caller should do next. */
   applyEvent(event: ServerEvent): 'finished' | 'refetch' | null {
+    const s = get();
+    // Workflow-level events (activation, test listeners) are broadcast to everyone: keep ours.
+    if (event.type.startsWith('workflow.') || event.type.startsWith('trigger.')) {
+      const d = event.data as { workflowId?: string };
+      if (d.workflowId !== s.workflowId) return null;
+      if (event.type === 'workflow.activated') set({ active: true, activationError: null, triggerError: null });
+      if (event.type === 'workflow.deactivated') set({ active: false, triggerError: null });
+      if (event.type === 'workflow.activationError') {
+        const e = event.data;
+        set(e.runtime ? { triggerError: e.message } : { active: false, activationError: e.message });
+      }
+      if (event.type === 'trigger.listening') {
+        const e = event.data;
+        set({ listening: { nodeName: e.nodeName, testUrl: e.testUrl, method: e.method, expiresAt: e.expiresAt } });
+      }
+      if (event.type === 'trigger.received' || event.type === 'trigger.stopped') set({ listening: null });
+      return null;
+    }
     const data = event.data as { executionId?: string };
     if (!data.executionId) return null;
-    const s = get();
     let ex = s.execution;
 
     if (event.type === 'execution.queued' || event.type === 'execution.started') {
@@ -441,7 +491,12 @@ export const editor = {
         if (ex.id && isRunning(ex.status) && ex.status !== 'starting') return null;
         ex = { ...emptyExecution(), destination: ex.status === 'starting' ? ex.destination : undefined, id: data.executionId, status: 'queued' };
       }
-      if (event.type === 'execution.started') ex = { ...ex, status: 'running', startedAt: Date.parse(event.data.startedAt), lastSeq: event.seq ?? 0 };
+      if (event.type === 'execution.started') {
+        // A resumed execution keeps its node states; only the waiting marker goes away.
+        const wasWaiting = ex.status === 'waiting' && ex.waiting;
+        const nodes = wasWaiting ? Object.fromEntries(Object.entries(ex.nodes).filter(([, n]) => n.status !== 'waiting')) : ex.nodes;
+        ex = { ...ex, nodes, status: 'running', waiting: undefined, startedAt: ex.startedAt ?? Date.parse(event.data.startedAt), lastSeq: event.seq ?? 0 };
+      }
       set({ execution: ex, logOpen: true });
       return null;
     }
@@ -482,6 +537,18 @@ export const editor = {
         const key = edgeKey({ source: d.from.node, output: d.from.output, target: d.to.node, input: d.to.input });
         ex = { ...ex, edges: { ...ex.edges, [key]: { count: d.itemCount, key: event.ts + Math.random() } } };
         break;
+      }
+      case 'execution.waiting': {
+        const d = event.data;
+        const prev = ex.nodes[d.nodeName];
+        ex = {
+          ...ex,
+          status: 'waiting',
+          waiting: { node: d.nodeName, till: d.waitTill, kind: d.kind, resumeUrl: d.resumeUrl },
+          nodes: { ...ex.nodes, [d.nodeName]: { status: 'waiting', itemCount: prev?.itemCount ?? 0, runs: prev?.runs ?? 0 } },
+        };
+        set({ execution: ex });
+        return null;
       }
       case 'execution.finished': {
         ex = { ...ex, status: event.data.status, finishedAt: Date.parse(event.data.stoppedAt), error: event.data.error ?? null };

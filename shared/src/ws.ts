@@ -41,6 +41,16 @@ export type ServerEvent =
       ExecutionRef & { from: { node: string; output: number }; to: { node: string; input: number }; itemCount: number }
     >
   | WsEnvelope<
+      'execution.waiting',
+      ExecutionRef & { nodeName: string; waitTill: string | null; kind: 'time' | 'webhook' | 'form'; resumeUrl: string }
+    >
+  | WsEnvelope<'workflow.activated', { workflowId: string }>
+  | WsEnvelope<'workflow.deactivated', { workflowId: string }>
+  | WsEnvelope<'workflow.activationError', { workflowId: string; message: string; runtime: boolean }>
+  | WsEnvelope<'trigger.listening', { workflowId: string; nodeName: string; testUrl?: string; method?: string; expiresAt: string }>
+  | WsEnvelope<'trigger.received', { workflowId: string; nodeName: string; executionId: string }>
+  | WsEnvelope<'trigger.stopped', { workflowId: string; nodeName: string; reason: 'timeout' | 'canceled' | 'error'; message?: string }>
+  | WsEnvelope<
       'execution.finished',
       ExecutionRef & {
         status: ExecutionStatus;

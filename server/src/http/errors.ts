@@ -47,6 +47,10 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
     } else if (err?.type === 'entity.too.large') {
       status = 413;
       body = { error: { message: 'The request body is too large.', code: 'payload_too_large' } };
+    } else if (typeof err?.status === 'number' && err.status >= 400 && err.status < 500) {
+      // Client errors raised by Express itself (e.g. malformed %-encoding in the URL).
+      status = err.status;
+      body = { error: { message: err.expose && err.message ? err.message : 'Bad request', code: 'bad_request' } };
     } else {
       logger.error(`Unhandled error on ${req.method} ${req.originalUrl}`, err);
       body = { error: { message: 'Internal server error. Check the server logs for details.', code: 'internal' } };

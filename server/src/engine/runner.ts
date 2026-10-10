@@ -18,13 +18,14 @@ import {
   ExecutionTimeoutError,
   FlowError,
   NodeOperationError,
+  WaitSignal,
   WorkflowOperationError,
   serializeError,
   toFlowError,
 } from './errors.js';
 import type { ExpressionEngine } from './expressions/engine.js';
 import { WorkflowGraph } from './graph.js';
-import { NodeExecutionContext } from './node-context.js';
+import { NodeExecutionContext, type ExecutionServices } from './node-context.js';
 import type { NodeType } from './types.js';
 
 export interface RunHooks {
@@ -45,6 +46,8 @@ export interface RunRequest {
   destinationNode?: string;
   /** Partial run: data from the previous run, reused for nodes whose inputs did not change. */
   previousRunData?: RunData;
+  /** Continue a paused execution: its saved state and the output of the node that waited. */
+  resume?: { state: EngineState; output: Item[] };
   signal?: AbortSignal;
   timeoutMs?: number;
   maxNodeRuns?: number;
@@ -52,13 +55,17 @@ export interface RunRequest {
   timezone?: string;
   variables?: Record<string, string>;
   env?: Record<string, string> | null;
+  /** Webhook responses, sub-workflows, resume URLs. */
+  services?: ExecutionServices;
 }
 
 export interface RunResult {
-  status: 'success' | 'error' | 'canceled';
+  status: 'success' | 'error' | 'canceled' | 'waiting';
   runData: RunData;
   error?: SerializedError;
   lastNodeExecuted: string | null;
+  /** Set when status is "waiting": what to store so the execution can be resumed later. */
+  wait?: { state: EngineState; till: Date | null; kind: 'time' | 'webhook' | 'form'; node: string };
 }
 
 export interface RunnerDeps {
@@ -80,9 +87,22 @@ interface Task {
 
 interface Waiting {
   node: string;
-  inputs: (Item[] | undefined)[];
+  inputs: (Item[] | null)[];
   sources: (TaskSource | null)[];
   fresh: boolean;
+}
+
+/** Everything needed to continue an execution later — plain JSON, stored while the execution waits. */
+export interface EngineState {
+  version: 1;
+  runData: RunData;
+  stack: Task[];
+  waiting: Waiting[];
+  nodeState: Record<string, object>;
+  totalRuns: number;
+  lastNode: string | null;
+  allowed: string[] | null;
+  pendingWait?: { task: Task; nodeName: string; startTime: number };
 }
 
 /** Thrown to end the execution after a node failed with "On Error: Stop Workflow". */
@@ -155,16 +175,21 @@ function assignPairedItems(outputs: Item[][], inputs: Item[][]): Item[][] {
   );
 }
 
+interface Live {
+  state: EngineState;
+  nodeState: Map<string, object>;
+  signal: AbortSignal;
+}
+
 /**
  * Executes a workflow: items flow through main connections, node by node.
  * Order follows n8n v1: depth-first, one branch finished before the next, branches top-to-bottom.
+ * A Wait node can pause the run: the state is returned and `run({ resume })` continues it later.
  */
 export class WorkflowRunner {
   constructor(private readonly deps: RunnerDeps) {}
 
   async run(req: RunRequest): Promise<RunResult> {
-    const runData: RunData = {};
-    let lastNode: string | null = null;
     const controller = new AbortController();
     const timeoutMs = req.timeoutMs ?? this.deps.defaults.timeoutMs;
     const timer =
@@ -183,51 +208,107 @@ export class WorkflowRunner {
     if (req.signal?.aborted) onExternalAbort();
     req.signal?.addEventListener('abort', onExternalAbort, { once: true });
 
+    let live: Live | undefined;
     try {
       const graph = new WorkflowGraph(req.workflow);
       for (const node of graph.nodes.values()) this.deps.registry.require(node.type);
-      const { tasks, allowed } = this.plan(req, graph);
-      const stack: Task[] = [...tasks].reverse();
-      const waiting: Waiting[] = [];
-      const nodeState = new Map<string, object>();
-      const maxRuns = req.maxNodeRuns ?? this.deps.defaults.maxNodeRuns;
-      let totalRuns = 0;
-
-      while (true) {
-        if (controller.signal.aborted) throw controller.signal.reason;
-        let task = stack.pop();
-        if (!task) {
-          // Nothing runnable left: run the oldest node that is still waiting for one of its inputs.
-          const next = waiting.shift();
-          if (!next) break;
-          task = { node: next.node, inputs: next.inputs.map((i) => i ?? []), sources: next.sources, fresh: next.fresh };
-        }
-        if (++totalRuns > maxRuns) {
-          throw new WorkflowOperationError(`Stopped after ${maxRuns} node executions`, {
-            hint: 'The workflow probably loops forever. Check the conditions that end your loop.',
-          });
-        }
-        const node = graph.node(task.node);
-        lastNode = node.name; // set before running, so a failing node is reported as the last one
-        const { outputs, status } = await this.runNode(req, graph, node, task, runData, nodeState, controller.signal);
-        if (req.destinationNode === node.name) continue;
-        this.deliver(req, graph, node, outputs, status, task, runData, allowed, stack, waiting);
+      if (req.resume) {
+        const state = structuredClone(req.resume.state);
+        live = { state, nodeState: new Map(Object.entries(state.nodeState)), signal: controller.signal };
+        this.completeWait(req, graph, live, req.resume.output);
+      } else {
+        const { tasks, allowed } = this.plan(req, graph);
+        const state: EngineState = {
+          version: 1,
+          runData: {},
+          stack: [...tasks].reverse(),
+          waiting: [],
+          nodeState: {},
+          totalRuns: 0,
+          lastNode: null,
+          allowed: allowed ? [...allowed] : null,
+        };
+        live = { state, nodeState: new Map(), signal: controller.signal };
       }
-      return { status: 'success', runData, lastNodeExecuted: lastNode };
+      return await this.loop(req, graph, live);
     } catch (err) {
-      if (err instanceof StopExecution) {
-        return { status: 'error', runData, error: serializeError(err.error), lastNodeExecuted: lastNode };
-      }
-      const error = err instanceof FlowError ? err : toFlowError(err, lastNode ?? 'workflow');
+      const runData = live?.state.runData ?? {};
+      const lastNodeExecuted = live?.state.lastNode ?? null;
+      if (err instanceof StopExecution) return { status: 'error', runData, error: serializeError(err.error), lastNodeExecuted };
+      const error = err instanceof FlowError ? err : toFlowError(err, lastNodeExecuted ?? 'workflow');
       return {
         status: err instanceof ExecutionCanceledError ? 'canceled' : 'error',
         runData,
         error: serializeError(error),
-        lastNodeExecuted: lastNode,
+        lastNodeExecuted,
       };
     } finally {
       if (timer) clearTimeout(timer);
       req.signal?.removeEventListener('abort', onExternalAbort);
+    }
+  }
+
+  private async loop(req: RunRequest, graph: WorkflowGraph, live: Live): Promise<RunResult> {
+    const { state } = live;
+    const allowed = state.allowed ? new Set(state.allowed) : null;
+    const maxRuns = req.maxNodeRuns ?? this.deps.defaults.maxNodeRuns;
+    while (true) {
+      if (live.signal.aborted) throw live.signal.reason;
+      let task = state.stack.pop();
+      if (!task) {
+        // Nothing runnable left: run the oldest node that is still waiting for one of its inputs.
+        const next = state.waiting.shift();
+        if (!next) break;
+        task = { node: next.node, inputs: next.inputs.map((i) => i ?? []), sources: next.sources, fresh: next.fresh };
+      }
+      if (++state.totalRuns > maxRuns) {
+        throw new WorkflowOperationError(`Stopped after ${maxRuns} node executions`, {
+          hint: 'The workflow probably loops forever. Check the conditions that end your loop.',
+        });
+      }
+      const node = graph.node(task.node);
+      state.lastNode = node.name; // set before running, so a failing node is reported as the last one
+      let result: { outputs: Item[][]; status: NodeRunStatus };
+      try {
+        result = await this.runNode(req, node, task, live);
+      } catch (err) {
+        if (!(err instanceof WaitSignal)) throw err;
+        state.pendingWait = { task, nodeName: node.name, startTime: Date.now() };
+        state.nodeState = Object.fromEntries(live.nodeState);
+        return {
+          status: 'waiting',
+          runData: state.runData,
+          lastNodeExecuted: node.name,
+          wait: { state, till: err.resumeAt, kind: err.kind, node: node.name },
+        };
+      }
+      if (req.destinationNode === node.name) continue;
+      this.deliver(req, graph, node, result.outputs, result.status, task, state, allowed);
+    }
+    return { status: 'success', runData: state.runData, lastNodeExecuted: state.lastNode };
+  }
+
+  /** Records the output of the node that was waiting and sends it on. */
+  private completeWait(req: RunRequest, graph: WorkflowGraph, live: Live, output: Item[]) {
+    const { state } = live;
+    const pending = state.pendingWait;
+    if (!pending) throw new WorkflowOperationError('This execution is not waiting');
+    delete state.pendingWait;
+    const node = graph.node(pending.nodeName);
+    const runIndex = state.runData[node.name]?.length ?? 0;
+    const outputs = assignPairedItems([output], pending.task.inputs);
+    const run: NodeRun = {
+      startTime: pending.startTime,
+      executionTime: Date.now() - pending.startTime,
+      status: 'success',
+      source: pending.task.sources,
+      data: { main: outputs },
+    };
+    (state.runData[node.name] ??= []).push(run);
+    state.lastNode = node.name;
+    req.hooks?.nodeFinished?.(node.name, runIndex, run);
+    if (req.destinationNode !== node.name) {
+      this.deliver(req, graph, node, outputs, 'success', pending.task, state, state.allowed ? new Set(state.allowed) : null);
     }
   }
 
@@ -245,9 +326,10 @@ export class WorkflowRunner {
         .sort((a, b) => this.compare(graph, a, b));
       const tasks = roots.map<Task>((name) => {
         const isTrigger = this.isTrigger(registry.require(graph.node(name).type));
+        const triggerItems = name === req.startNode ? req.triggerItems : undefined;
         // A node without a trigger in front of it starts with one empty item (like n8n's "execute step").
         return isTrigger
-          ? { node: name, inputs: [], sources: [], fresh: false }
+          ? { node: name, inputs: [], sources: [], fresh: Boolean(triggerItems), ...(triggerItems ? { triggerItems } : {}) }
           : { node: name, inputs: [[{ json: {} }]], sources: [null], fresh: false };
       });
       return { tasks, allowed };
@@ -284,16 +366,9 @@ export class WorkflowRunner {
     return ay - by || ax - bx;
   }
 
-  private async runNode(
-    req: RunRequest,
-    graph: WorkflowGraph,
-    node: WorkflowNode,
-    task: Task,
-    runData: RunData,
-    nodeState: Map<string, object>,
-    signal: AbortSignal,
-  ): Promise<{ outputs: Item[][]; status: NodeRunStatus }> {
+  private async runNode(req: RunRequest, node: WorkflowNode, task: Task, live: Live): Promise<{ outputs: Item[][]; status: NodeRunStatus }> {
     const { registry, logger } = this.deps;
+    const { runData } = live.state;
     const type = registry.require(node.type);
     const runIndex = runData[node.name]?.length ?? 0;
     req.hooks?.nodeStarted?.(node.name, runIndex);
@@ -329,7 +404,7 @@ export class WorkflowRunner {
         outputs = previous[previous.length - 1]!.data.main.map((list) => [...list]);
         status = 'reused';
       } else {
-        const result = await this.execute(req, node, type, task, runData, nodeState, runIndex, signal, regularCount);
+        const result = await this.execute(req, node, type, task, live, runIndex, regularCount);
         outputs = result.outputs;
         logs = result.logs;
         if (result.error) {
@@ -343,6 +418,7 @@ export class WorkflowRunner {
       finish();
       return { outputs, status };
     } catch (err) {
+      if (err instanceof WaitSignal) throw err;
       outputs = [];
       status = 'error';
       if (err instanceof StopExecution) {
@@ -365,10 +441,8 @@ export class WorkflowRunner {
     node: WorkflowNode,
     type: NodeType,
     task: Task,
-    runData: RunData,
-    nodeState: Map<string, object>,
+    live: Live,
     runIndex: number,
-    signal: AbortSignal,
     regularCount: number,
   ): Promise<{ outputs: Item[][]; errorItems: Item[]; logs: string[]; error?: FlowError }> {
     if (!type.execute) return { outputs: [], errorItems: [], logs: [] };
@@ -377,6 +451,7 @@ export class WorkflowRunner {
     const wait = clamp(node.waitBetweenTries ?? 1000, 0, 5000);
     let lastError: unknown;
     let lastLogs: string[] = [];
+    const { signal } = live;
 
     for (let attempt = 1; attempt <= tries; attempt++) {
       const ctx = new NodeExecutionContext({
@@ -388,8 +463,8 @@ export class WorkflowRunner {
         runIndex,
         inputs,
         sources: task.sources,
-        runData,
-        nodeState,
+        runData: live.state.runData,
+        nodeState: live.nodeState,
         signal,
         logger: this.deps.logger,
         expressions: this.deps.expressions,
@@ -397,6 +472,7 @@ export class WorkflowRunner {
         timezone: req.timezone ?? req.workflow.settings?.timezone ?? this.deps.defaults.timezone,
         variables: req.variables ?? {},
         env: req.env === undefined ? null : req.env,
+        services: req.services,
       });
       try {
         const raw = await raceAbort(() => type.execute!(ctx), signal);
@@ -409,6 +485,7 @@ export class WorkflowRunner {
         return { outputs, errorItems: ctx.errorItems, logs: ctx.logs };
       } catch (err) {
         if (signal.aborted) throw signal.reason;
+        if (err instanceof WaitSignal) throw err;
         lastError = err;
         lastLogs = ctx.logs;
         if (attempt < tries) {
@@ -447,12 +524,10 @@ export class WorkflowRunner {
     outputs: Item[][],
     status: NodeRunStatus,
     task: Task,
-    runData: RunData,
+    state: EngineState,
     allowed: Set<string> | null,
-    stack: Task[],
-    waiting: Waiting[],
   ): void {
-    const runIndex = runData[node.name]!.length - 1;
+    const runIndex = state.runData[node.name]!.length - 1;
     const fresh = task.fresh || (status !== 'reused' && status !== 'pinned');
     const deliveries: Array<{ output: number; target: string; input: number; items: Item[] }> = [];
     (req.workflow.connections[node.name]?.main ?? []).forEach((targets, output) => {
@@ -475,20 +550,20 @@ export class WorkflowRunner {
         ready.push({ node: d.target, inputs: [d.items], sources: [source], fresh });
         continue;
       }
-      let entry = waiting.find((w) => w.node === d.target && w.inputs[d.input] === undefined);
+      let entry = state.waiting.find((w) => w.node === d.target && w.inputs[d.input] === null);
       if (!entry) {
-        entry = { node: d.target, inputs: Array(inputCount).fill(undefined), sources: Array(inputCount).fill(null), fresh: false };
-        waiting.push(entry);
+        entry = { node: d.target, inputs: Array(inputCount).fill(null), sources: Array(inputCount).fill(null), fresh: false };
+        state.waiting.push(entry);
       }
       entry.inputs[d.input] = d.items;
       entry.sources[d.input] = source;
       entry.fresh ||= fresh;
-      if (entry.inputs.every((i) => i !== undefined)) {
-        waiting.splice(waiting.indexOf(entry), 1);
+      if (entry.inputs.every((i) => i !== null)) {
+        state.waiting.splice(state.waiting.indexOf(entry), 1);
         ready.push({ node: entry.node, inputs: entry.inputs as Item[][], sources: entry.sources, fresh: entry.fresh });
       }
     }
     // LIFO stack: push in reverse so the top-most branch runs first and completely.
-    for (let i = ready.length - 1; i >= 0; i--) stack.push(ready[i]!);
+    for (let i = ready.length - 1; i >= 0; i--) state.stack.push(ready[i]!);
   }
 }

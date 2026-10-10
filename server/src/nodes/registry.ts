@@ -22,7 +22,7 @@ const PropertySchema: z.ZodType = z.lazy(() =>
     displayName: z.string().min(1),
     type: z.enum([
       'string', 'number', 'boolean', 'options', 'multiOptions', 'json', 'code', 'dateTime', 'color',
-      'collection', 'fixedCollection', 'keyValue', 'conditions', 'assignments', 'formFields', 'workflowSelector', 'notice',
+      'collection', 'fixedCollection', 'keyValue', 'conditions', 'assignments', 'formFields', 'workflowSelector', 'webhookUrls', 'notice',
     ]),
     default: z.unknown(),
     required: z.boolean().optional(),

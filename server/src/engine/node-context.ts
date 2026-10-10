@@ -1,11 +1,19 @@
 import type { BinaryRef, ExecutionMode, Item, JsonObject, RunData, TaskSource, WorkflowData, WorkflowNode } from '@flowforge/shared';
 import type { Logger } from '../logger.js';
 import type { BinaryStore } from './binary-store.js';
-import { NodeOperationError, toFlowError } from './errors.js';
+import { NodeOperationError, WaitSignal, toFlowError } from './errors.js';
 import type { ExpressionEngine, ExpressionScope } from './expressions/engine.js';
 import { getDefault, getPath, isNoExpression } from './params.js';
 import { resolvePairedItem } from './paired-items.js';
-import type { ExecuteContext, NodeHelpers, NodeType } from './types.js';
+import type { ExecuteContext, NodeHelpers, NodeType, SubWorkflowRequest, WebhookResponse } from './types.js';
+
+/** Capabilities the execution service gives to nodes (absent in plain test runs). */
+export interface ExecutionServices {
+  /** Present when a webhook caller waits for a "Respond to Webhook" node. */
+  webhookResponder?: { send(response: WebhookResponse): boolean };
+  executeSubWorkflow?(request: SubWorkflowRequest): Promise<Item[]>;
+  resumeUrls?: { webhook: string; form: string };
+}
 
 export interface NodeContextOptions {
   node: WorkflowNode;
@@ -25,6 +33,7 @@ export interface NodeContextOptions {
   timezone: string;
   variables: Record<string, string>;
   env: Record<string, string> | null;
+  services?: ExecutionServices;
 }
 
 export class NodeExecutionContext implements ExecuteContext {
@@ -61,6 +70,8 @@ export class NodeExecutionContext implements ExecuteContext {
       timezone: o.timezone,
       variables: o.variables,
       env: o.env,
+      resumeUrl: o.services?.resumeUrls?.webhook,
+      resumeFormUrl: o.services?.resumeUrls?.form,
     };
     this.helpers = {
       prepareBinaryData: (data, fileName, mimeType): Promise<BinaryRef> => o.binaryStore.store(o.executionId, data, fileName, mimeType),
@@ -165,5 +176,24 @@ export class NodeExecutionContext implements ExecuteContext {
 
   addLog(line: string): void {
     if (this.logs.length < 500) this.logs.push(line.length > 2000 ? `${line.slice(0, 2000)}…` : line);
+  }
+
+  putExecutionToWait(resumeAt: Date | null, kind: 'time' | 'webhook' | 'form'): never {
+    throw new WaitSignal(resumeAt, kind);
+  }
+
+  sendWebhookResponse(response: WebhookResponse): boolean {
+    return this.o.services?.webhookResponder?.send(response) ?? false;
+  }
+
+  executeWorkflow(request: SubWorkflowRequest): Promise<Item[]> {
+    if (!this.o.services?.executeSubWorkflow) {
+      throw new NodeOperationError('Sub-workflows cannot run here', { hint: 'Run the workflow from the editor or a trigger.' });
+    }
+    return this.o.services.executeSubWorkflow(request);
+  }
+
+  getResumeUrls(): { webhook: string; form: string } {
+    return this.o.services?.resumeUrls ?? { webhook: '', form: '' };
   }
 }

@@ -13,6 +13,7 @@ import { CodeMirror } from './CodeMirror';
 import { codeExtensions } from './cm';
 import { isGroupList, isOptionList, isPropertyList, isVisible, setIn, withDefaults, type Values } from './display';
 import { Field, inputClass, readDropped, type FixedKind } from './Field';
+import { WebhookUrls, WorkflowSelector } from './SpecialInputs';
 
 interface ListProps {
   properties: NodeProperty[];
@@ -165,6 +166,10 @@ export function ParameterInput({ property: p, value, root, onChange, testId, com
           <input className={inputClass} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
         </div>,
       );
+    case 'webhookUrls':
+      return <WebhookUrls property={p} />;
+    case 'workflowSelector':
+      return field(<WorkflowSelector value={value} onChange={onChange} testId={testId} />);
     case 'notice':
       return (
         <div className="flex gap-2 rounded-md border border-info/30 bg-info/8 px-3 py-2 text-[12.5px] text-[#b8d8ff]">

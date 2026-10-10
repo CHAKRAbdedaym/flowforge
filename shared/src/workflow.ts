@@ -64,7 +64,11 @@ export interface WorkflowSettings {
   /** Seconds; 0 or missing = instance default. */
   executionTimeout?: number;
   timezone?: string;
+  /** Id of the workflow started (via its Error Trigger) when a production execution fails. */
   errorWorkflow?: string;
+  /** Production executions only: keep the data of successful / failed runs (default: all). */
+  saveDataSuccessExecution?: 'all' | 'none';
+  saveDataErrorExecution?: 'all' | 'none';
 }
 
 export interface WorkflowData {
@@ -78,21 +82,46 @@ export interface WorkflowData {
   pinData?: Record<string, Item[]>;
 }
 
+/** Activation status shown next to the Active toggle. */
+export interface ActivationInfo {
+  active: boolean;
+  /** Why the last activation failed (the workflow is inactive). */
+  activationError: string | null;
+  /** A trigger failed while the workflow was active (status turns red). */
+  triggerError: string | null;
+  triggerErrorAt: string | null;
+}
+
 /** A stored workflow as returned by the API. */
-export interface WorkflowRecord extends WorkflowData {
+export interface WorkflowRecord extends Omit<WorkflowData, 'active'>, ActivationInfo {
   id: string;
   versionId: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface WorkflowSummary {
+export interface WorkflowSummary extends ActivationInfo {
   id: string;
   name: string;
-  active: boolean;
   nodeCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Body of POST /api/workflows/:id/test-listen ("Listen for test event"). */
+export interface TestListenRequest {
+  workflow: WorkflowData;
+  nodeName: string;
+}
+
+export interface TestListenResponse {
+  kind: 'webhook' | 'schedule' | 'poll' | 'listener' | 'event' | 'manual';
+  /** For webhooks: the URL to call. */
+  testUrl?: string;
+  method?: string;
+  expiresAt?: string;
+  /** For triggers that run right away (schedule, poll): the started execution. */
+  executionId?: string;
 }
 
 /** Body of POST /api/executions/run (manual run from the editor). */
@@ -157,6 +186,10 @@ export interface ExecutionSummary {
   stoppedAt: string | null;
   lastNodeExecuted: string | null;
   errorMessage: string | null;
+  parentExecutionId: string | null;
+  /** When status is "waiting": when it resumes (null = on webhook call / form). */
+  waitTill: string | null;
+  waitingNode: string | null;
 }
 
 export interface ExecutionDetail extends ExecutionSummary {

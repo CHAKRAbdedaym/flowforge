@@ -49,8 +49,8 @@
 - [x] P0 Live execution events over WebSocket (`execution.*`, `node.started/finished` with preview, `edge.data`) (Ph 1) — test: `api-engine.test.ts` (order, seq, previews)
 - [x] P0 Expression preview API for the editor (`POST /api/expressions/preview`) (Ph 1) — test: `api-engine.test.ts`; manual: curl
 - [x] P2 Dev endpoint `POST /api/dev/run` to run a workflow JSON with curl (disable with `FLOWFORGE_DEV_API=false`) (Ph 1) — test: `api-engine.test.ts` (8 fixtures)
-- [ ] P0 Error workflow (Error Trigger receives failed execution info) (Ph 3)
-- [ ] P0 Sub-workflows (Execute Workflow + Execute Workflow Trigger) (Ph 3)
+- [x] P0 Error workflow (Error Trigger receives failed execution info, n8n payload) (Ph 3) — test: `server/tests/triggers.test.ts`
+- [x] P0 Sub-workflows (Execute Workflow + Execute Workflow Trigger, parent link, depth limit 10) (Ph 3) — test: `server/tests/triggers.test.ts`
 
 ## Editor + live visualization (all P0)
 - [x] P0 Canvas: drag/drop nodes, connect, delete, pan/zoom (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
@@ -69,31 +69,34 @@
 - [x] P0 Pin / unpin data from the output panel (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
 - [x] P0 Live execution over WebSocket: running nodes glow, success/error state, item counts (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
 - [x] P0 Particles on edges + item-count labels + execution log panel (Ph 2) — data preview on hover / polish in Ph 8 — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
-- [ ] P0 Activate / deactivate workflow with visible status and activation errors (Ph 3)
+- [x] P0 Activate / deactivate workflow with visible status and activation errors (editor + workflows list) (Ph 3) — test: `server/tests/triggers.test.ts` (lifecycle, boot, no leaks); e2e: `web/e2e/editor-triggers.spec.ts`
 
 - [x] P2 Workflows list: create, open, rename, delete (Ph 2) — e2e: `editor-canvas.spec.ts` (tags/search/duplicate in Ph 7)
-- [ ] P0 Fallback JSON editor for unknown parameter types (Ph 2) — implemented, not testable until a node uses such a type (Ph 3B)
+- [x] P0 Fallback JSON editor for unknown parameter types (Ph 2) — e2e: `editor-triggers.spec.ts` (Wait node form fields)
 - [ ] P0 Error card "Open Credentials" button (Ph 2) — implemented, tested with real credential nodes in Ph 3B
 
 ## Triggers
 - [x] P0 Manual Trigger (Ph 1) — test: `engine.test.ts`
-- [ ] P0 Webhook: all HTTP methods, path params (Ph 3)
-- [ ] P0 Webhook: separate test URL (`/webhook-test`, listen 120 s) and production URL (`/webhook`) (Ph 3)
-- [ ] P0 Webhook response mode: Immediately (Ph 3)
-- [ ] P0 Webhook response mode: When last node finishes (Ph 3)
-- [ ] P0 Webhook response mode: Using Respond to Webhook node (Ph 3)
-- [ ] P0 Webhook: JSON / form / multipart (binary) / raw bodies; optional basic/header auth (Ph 3)
-- [ ] P0 Schedule Trigger: interval rules (seconds → months) (Ph 3)
-- [ ] P0 Schedule Trigger: cron expression + timezone (Ph 3)
+- [x] P0 Webhook: all HTTP methods, path params (static before dynamic) (Ph 3) — test: `server/tests/webhook.test.ts`
+- [x] P0 Webhook: separate test URL (`/webhook-test`, listen 120 s, single shot) and production URL (`/webhook`) (Ph 3) — test: `server/tests/webhook.test.ts`; e2e: editor-triggers
+- [x] P0 Webhook response mode: Immediately (custom code / body / headers) (Ph 3) — test: `server/tests/webhook.test.ts`; manual: curl guide A
+- [x] P0 Webhook response mode: When last node finishes (first JSON / all / binary / no body; 500 on error) (Ph 3) — test: `server/tests/webhook.test.ts`; manual: curl guide B
+- [x] P0 Webhook response mode: Using Respond to Webhook node (clear 500 if none runs) (Ph 3) — test: `server/tests/webhook.test.ts`; manual: curl guide C
+- [x] P0 Webhook: JSON / form / multipart (binary) / raw bodies; basic/header auth; CORS; path conflicts refused (Ph 3) — test: `server/tests/webhook.test.ts`
+- [x] P0 Schedule Trigger: interval rules (seconds → months) (Ph 3) — test: `server/tests/triggers.test.ts`; manual: curl guide E
+- [x] P0 Schedule Trigger: cron expression (with seconds) + workflow timezone (Ph 3) — test: `server/tests/triggers.test.ts`
 - [ ] P0 Form Trigger (see Integrations → Form) (Ph 3B)
 - [ ] P0 Telegram Trigger, long polling, no public URL needed (Ph 5)
-- [ ] P0 Error Trigger (Ph 3)
-- [ ] P0 Execute Workflow Trigger (Ph 3)
+- [x] P0 Error Trigger (Ph 3) — test: `server/tests/triggers.test.ts`
+- [x] P0 Execute Workflow Trigger (Ph 3) — test: `server/tests/triggers.test.ts`
 - [ ] P2 Chat Trigger: hosted chat page + in-editor chat panel (Ph 5)
-- [ ] P2 Local File Trigger (restricted to `./data/files`) (Ph 3)
-- [ ] P2 RSS Feed Trigger (Ph 3)
-- [ ] P2 HTTP polling trigger with dedupe (Ph 3)
-- [ ] P2 Test mode "Listen for test event" for every trigger type (Ph 3/5)
+- [x] P2 Local File Trigger (add/change/delete, ignore patterns, restricted to `./data/files`) (Ph 3) — test: `server/tests/triggers.test.ts`
+- [x] P2 RSS Feed Trigger (Ph 3) — test: `server/tests/triggers.test.ts` (local feed server)
+- [x] P2 HTTP polling trigger with dedupe (key field or SHA-256, LRU 5000, baseline on first run) (Ph 3) — test: `server/tests/triggers.test.ts`
+- [ ] P2 Test mode "Listen for test event" for every trigger type (Ph 3/5) — done and tested for webhook, schedule, RSS / HTTP poll, file trigger (`triggers.test.ts`, e2e); Telegram and Chat come in Ph 5
+
+- [x] P0 Public routes are safe: rate limit per IP, body size limit (413), path length limit, malformed URLs → 4xx, never crash (Ph 3) — test: `server/tests/webhook.test.ts`
+- [x] P2 Workflow settings dialog: error workflow, timezone, execution timeout, save production runs (Ph 3) — e2e: `editor-triggers.spec.ts`
 
 ## Flow nodes
 - [x] P0 IF (Ph 1) — test: `engine.test.ts`, `conditions.test.ts` (shared condition engine, strict/loose types)
@@ -104,8 +107,8 @@
 - [x] P2 Filter (kept / discarded) (Ph 1) — test: `nodes.test.ts`
 - [x] P2 Loop Over Items (Ph 1) — test: `engine.test.ts`; manual: fixture 04
 - [x] P2 Stop and Error (Ph 1) — test: `nodes.test.ts`; manual: fixture 08
-- [ ] P2 Wait: interval, specific time, webhook resume, form resume; persisted across restart (Ph 3)
-- [ ] P2 Execute Workflow (database / JSON source, once / per item, wait or not) (Ph 3)
+- [x] P2 Wait: interval, specific time, webhook resume, form resume (server-side validation); persisted across restart (Ph 3) — test: `server/tests/triggers.test.ts` (incl. stop → restart → resume); e2e: editor-triggers; manual: curl guide F, G
+- [x] P2 Execute Workflow (database / JSON source, once / per item, wait or not) (Ph 3) — test: `server/tests/triggers.test.ts`
 
 ## Data nodes
 - [x] P0 Set / Edit Fields (manual mapping + JSON mode) (Ph 1) — test: `nodes.test.ts`
@@ -131,7 +134,7 @@
 - [ ] P0 HTTP Request: all methods, headers, query, body types (JSON, form, multipart, raw, binary) (Ph 4)
 - [ ] P0 HTTP Request: auth none / basic / bearer / API key (header or query) (Ph 4)
 - [ ] P0 HTTP Request: pagination, timeout, full response, response format (Ph 4)
-- [ ] P0 Respond to Webhook (all items, first item, JSON, text, binary, redirect, no data; status + headers) (Ph 3)
+- [x] P0 Respond to Webhook (all items, first item, JSON, text, binary, redirect, no data; status + headers) (Ph 3) — test: `server/tests/webhook.test.ts`
 - [ ] P2 HTTP Request: import cURL (Ph 4)
 - [ ] P2 GraphQL (Ph 4)
 

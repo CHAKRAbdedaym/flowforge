@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { ChevronLeft, Keyboard, Play, Save, Square } from 'lucide-react';
+import { ChevronLeft, Keyboard, Play, Save, Settings2, Square } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { cn } from '../components/ui/cn';
 import { executeWorkflow, save, stopCurrent } from './actions';
+import { ActiveToggle } from './ActiveToggle';
 import { editor, isRunning, useEditor } from './store';
 
 function WorkflowName() {
@@ -60,6 +61,17 @@ export function TopBar() {
         {dirty ? 'Unsaved changes' : 'Saved'}
       </span>
       <div className="ml-auto flex items-center gap-2">
+        <ActiveToggle />
+        <div className="mx-1 h-5 w-px bg-line" />
+        <button
+          type="button"
+          title="Workflow settings"
+          data-testid="open-settings"
+          onClick={() => editor.setUi({ settingsOpen: true })}
+          className="rounded p-2 text-subtle hover:bg-panel-3 hover:text-fg"
+        >
+          <Settings2 size={16} />
+        </button>
         <button type="button" title="Keyboard shortcuts (?)" onClick={() => editor.setUi({ helpOpen: true })} className="rounded p-2 text-subtle hover:bg-panel-3 hover:text-fg">
           <Keyboard size={16} />
         </button>

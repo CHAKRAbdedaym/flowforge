@@ -41,6 +41,12 @@ curl -b cookies.txt -H 'Content-Type: application/json' \
 Options (query string): `destinationNode=<name>` runs only up to that node, `wait=false` returns the
 execution id immediately, `startNode=<trigger>` picks the trigger. Full details: `GET /api/executions/<id>`.
 
+## Webhooks and triggers
+
+- Production URL: `http://<host>:5679/webhook/<path>` — works while the workflow is **active** (toggle in the editor).
+- Test URL: `http://<host>:5679/webhook-test/<path>` — works once after **Listen for test event**.
+- Example workflows to import with curl: `server/tests/fixtures/workflows/09…14` (response modes, schedule, waits).
+
 ## Troubleshooting
 
 - **"No SQLite driver could be loaded"** at startup: during `npm install`, `better-sqlite3` downloads a

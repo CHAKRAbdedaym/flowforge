@@ -27,6 +27,10 @@ export interface AppConfig {
   devApi: boolean;
   /** Allow `$env` in expressions (FlowForge secrets are always hidden). */
   allowEnvAccess: boolean;
+  /** Folder file nodes may read/write/watch. */
+  filesRoot: string;
+  webhookMaxBodyBytes: number;
+  webhookRatePerMinute: number;
 }
 
 const isTimezone = (tz: string) => {
@@ -57,6 +61,9 @@ const EnvSchema = z.object({
     .default(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'),
   FLOWFORGE_DEV_API: bool.default(true),
   FLOWFORGE_ALLOW_ENV_ACCESS: bool.default(true),
+  FLOWFORGE_FILES_DIR: z.string().optional(),
+  WEBHOOK_MAX_BODY_MB: z.coerce.number().positive().max(1024).default(16),
+  WEBHOOK_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(600),
 });
 
 /** Loads `.env` from the repo root (never overriding real environment variables). */
@@ -97,5 +104,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     timezone: e.GENERIC_TIMEZONE,
     devApi: e.FLOWFORGE_DEV_API,
     allowEnvAccess: e.FLOWFORGE_ALLOW_ENV_ACCESS,
+    filesRoot: e.FLOWFORGE_FILES_DIR
+      ? isAbsolute(e.FLOWFORGE_FILES_DIR)
+        ? e.FLOWFORGE_FILES_DIR
+        : resolve(ROOT_DIR, e.FLOWFORGE_FILES_DIR)
+      : resolve(dataDir, 'files'),
+    webhookMaxBodyBytes: Math.round(e.WEBHOOK_MAX_BODY_MB * 1024 * 1024),
+    webhookRatePerMinute: e.WEBHOOK_RATE_LIMIT_PER_MINUTE,
   };
 }

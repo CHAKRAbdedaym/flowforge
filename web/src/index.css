@@ -66,6 +66,13 @@
 .ff-node-running {
   animation: ff-glow 1.1s ease-in-out infinite;
 }
+@keyframes ff-listen {
+  0%, 100% { box-shadow: 0 0 0 2px rgb(255 109 58 / 0.8), 0 0 10px 1px rgb(255 109 58 / 0.25); }
+  50% { box-shadow: 0 0 0 3px rgb(255 109 58 / 1), 0 0 24px 6px rgb(255 109 58 / 0.45); }
+}
+.ff-node-listening {
+  animation: ff-listen 1.4s ease-in-out infinite;
+}
 .react-flow {
   --xy-background-color: var(--color-bg);
   --xy-node-border-radius: 12px;

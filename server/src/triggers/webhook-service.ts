@@ -1,0 +1,309 @@
+import { randomUUID } from 'node:crypto';
+import type { Request, Response } from 'express';
+import type { ExecutionDetail, Item, JsonObject, WorkflowData } from '@flowforge/shared';
+import type { NodeType } from '../engine/types.js';
+import type { ExecutionsRepo } from '../db/repositories/executions.js';
+import type { BinaryStore } from '../engine/binary-store.js';
+import type { ExecutionService, StartedExecution, WebhookResponder } from '../engine/execution-service.js';
+import { getExpressionEngine } from '../engine/expressions/engine.js';
+import { isNoExpression, withDefaults } from '../engine/params.js';
+import type { WebhookHandleResult, WebhookRequestData, WebhookResponse } from '../engine/types.js';
+import type { Logger } from '../logger.js';
+import type { NodeRegistry } from '../nodes/registry.js';
+import { parseRequest, RequestError } from './request.js';
+import type { WebhookKind, WebhookRegistration, WebhookRegistry } from './webhook-registry.js';
+
+export interface WebhookServiceOptions {
+  registry: WebhookRegistry;
+  nodes: NodeRegistry;
+  executions: ExecutionService;
+  executionsRepo: ExecutionsRepo;
+  binaryStore: BinaryStore;
+  logger: Logger;
+  publicUrl: string;
+  maxBodyBytes: number;
+  timezone?: string;
+  /** A test webhook was called (single shot): the editor is told which execution started. */
+  onTestReceived?(reg: WebhookRegistration, executionId: string): void;
+}
+
+const json = (res: Response, status: number, body: unknown) => res.status(status).json(body);
+
+/**
+ * Webhook settings are read before the workflow runs, so expressions see no item data
+ * ($now, $workflow, $vars work; $json is empty). Parameters marked noDataExpression stay raw.
+ */
+function resolveStatic(type: NodeType, workflow: WorkflowData, nodeName: string, raw: JsonObject, timezone: string): JsonObject {
+  const params = withDefaults(type.properties, raw);
+  const engine = getExpressionEngine();
+  const scope = {
+    workflow,
+    runData: {},
+    nodeName,
+    inputs: [[]],
+    sources: [],
+    runIndex: 0,
+    mode: 'webhook' as const,
+    executionId: '',
+    timezone,
+    variables: {},
+    env: null,
+  };
+  return Object.fromEntries(
+    Object.entries(params).map(([k, v]) => [k, isNoExpression(type.properties, k) ? v : engine.resolve(v, scope, 0)]),
+  );
+}
+
+/** Writes a WebhookResponse (JSON / text / bytes / redirect / empty). */
+export function sendWebhookResponse(res: Response, response: WebhookResponse): void {
+  if (res.headersSent) return;
+  for (const [k, v] of Object.entries(response.headers ?? {})) if (k) res.setHeader(k, v);
+  if (response.redirect) {
+    res.redirect(response.statusCode >= 300 && response.statusCode < 400 ? response.statusCode : 307, response.redirect);
+    return;
+  }
+  res.status(response.statusCode);
+  const body = response.body;
+  if (body === undefined || body === null || body === '') res.end();
+  else if (Buffer.isBuffer(body)) res.end(body);
+  else if (typeof body === 'string') {
+    if (!res.getHeader('content-type')) res.type('text/plain');
+    res.send(body);
+  } else res.json(body);
+}
+
+/** Receives webhook calls, starts executions and answers according to the response mode. */
+export class WebhookService {
+  constructor(private readonly o: WebhookServiceOptions) {}
+
+  async handle(kind: WebhookKind, req: Request, res: Response, rawPath: string): Promise<void> {
+    const method = req.method.toUpperCase();
+    if (method === 'OPTIONS') return this.preflight(kind, req, res, rawPath);
+    const match = this.o.registry.match(kind, method, rawPath);
+    const prefix = kind === 'test' ? 'webhook-test' : 'webhook';
+    if (!match) {
+      json(res, 404, {
+        message: `The requested webhook "${method} ${rawPath}" is not registered.`,
+        hint:
+          kind === 'test'
+            ? 'Click "Listen for test event" on the Webhook node in the editor, then call the test URL (it works once).'
+            : 'Activate the workflow to use the production URL (or use the test URL while listening).',
+      });
+      return;
+    }
+    if ('methods' in match) {
+      res.setHeader('Allow', match.methods.join(', '));
+      json(res, 405, { message: `This webhook accepts ${match.methods.join(', ')} requests, not ${method}.` });
+      return;
+    }
+    const { reg, params } = match;
+    const node = reg.workflow.nodes.find((n) => n.name === reg.nodeName);
+    const type = node ? this.o.nodes.get(node.type) : undefined;
+    if (!node || !type?.webhook) {
+      json(res, 500, { message: 'The webhook node no longer exists in this workflow.' });
+      return;
+    }
+    let parameters: JsonObject;
+    try {
+      parameters = resolveStatic(type, reg.workflow, node.name, node.parameters ?? {}, reg.workflow.settings?.timezone || this.o.timezone || 'UTC');
+    } catch (err) {
+      json(res, 500, { message: `The webhook settings contain an invalid expression: ${(err as Error).message}` });
+      return;
+    }
+    this.applyCors(req, res, type.webhook.cors?.(parameters));
+
+    let parsed;
+    try {
+      parsed = await parseRequest(req, this.o.maxBodyBytes);
+    } catch (err) {
+      const e = err instanceof RequestError ? err : new RequestError(400, 'Could not read the request');
+      json(res, e.status, { message: e.message });
+      return;
+    }
+    const request: WebhookRequestData = {
+      method,
+      params,
+      query: req.query as Record<string, unknown>,
+      headers: Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : String(v ?? '')])),
+      body: parsed.body,
+      contentType: parsed.contentType,
+      rawBody: parsed.rawBody,
+      files: parsed.files,
+      webhookUrl: `${this.o.publicUrl}/${prefix}/${reg.path}`,
+      executionMode: kind === 'test' ? 'test' : 'production',
+    };
+    const folder = `wh-${randomUUID()}`;
+    const result = await type.webhook.handle({
+      request,
+      parameters,
+      node,
+      storeBinary: (data, fileName, mimeType) => this.o.binaryStore.store(folder, data, fileName, mimeType),
+    });
+    if ('response' in result) {
+      sendWebhookResponse(res, result.response);
+      return;
+    }
+    if (kind === 'test') reg.onUse?.();
+
+    await this.run(res, result, (responder) =>
+      this.o.executions.start({
+        workflow: reg.workflow,
+        mode: kind === 'test' ? 'manual' : 'webhook',
+        startNode: reg.nodeName,
+        triggerItems: result.items,
+        responder,
+      }),
+    (executionId) => kind === 'test' && this.o.onTestReceived?.(reg, executionId));
+  }
+
+  /** /webhook-waiting/:executionId — resumes an execution paused by a Wait node ("On Webhook Call"). */
+  async handleWaiting(req: Request, res: Response, executionId: string): Promise<void> {
+    const waiting = this.o.executionsRepo.getWaiting(executionId);
+    const node = waiting?.workflow.nodes.find((n) => n.name === waiting.node);
+    const type = node ? this.o.nodes.get(node.type) : undefined;
+    if (!waiting || !node || !type || waiting.kind !== 'webhook') {
+      json(res, 404, {
+        message: 'No execution is waiting for this URL.',
+        hint: 'It may have resumed already, timed out or been stopped.',
+      });
+      return;
+    }
+    const parameters = withDefaults(type.properties, node.parameters ?? {});
+    const method = String(parameters.httpMethod ?? 'GET').toUpperCase();
+    if (req.method.toUpperCase() !== method) {
+      res.setHeader('Allow', method);
+      json(res, 405, { message: `This resume URL accepts ${method} requests, not ${req.method.toUpperCase()}.` });
+      return;
+    }
+    let parsed;
+    try {
+      parsed = await parseRequest(req, this.o.maxBodyBytes);
+    } catch (err) {
+      const e = err instanceof RequestError ? err : new RequestError(400, 'Could not read the request');
+      json(res, e.status, { message: e.message });
+      return;
+    }
+    const item: Item = {
+      json: {
+        headers: Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : String(v ?? '')])),
+        params: {},
+        query: req.query as Record<string, unknown>,
+        body: parsed.body as Item['json'][string],
+      },
+    };
+    const mode = String(parameters.responseMode ?? 'onReceived') as 'onReceived' | 'lastNode' | 'responseNode';
+    await this.run(res, { items: [item], responseMode: mode, lastNodeData: 'firstEntryJson' }, (responder) => {
+      const started = this.o.executions.resume(executionId, [item], responder);
+      if (!started) throw new RequestError(409, 'This execution has already been resumed.');
+      return started;
+    });
+  }
+
+  private async run(
+    res: Response,
+    result: Extract<WebhookHandleResult, { items: Item[] }>,
+    start: (responder?: WebhookResponder) => StartedExecution,
+    onStarted?: (executionId: string) => void,
+  ): Promise<void> {
+    const code = result.responseCode ?? 200;
+    const headers = result.responseHeaders ?? {};
+    try {
+      if (result.responseMode === 'responseNode') {
+        let resolveResponse!: (r: WebhookResponse) => void;
+        const responded = new Promise<WebhookResponse>((r) => (resolveResponse = r));
+        let sent = false;
+        const started = start({
+          send: (response) => {
+            if (sent) return false;
+            sent = true;
+            resolveResponse(response);
+            return true;
+          },
+        });
+        onStarted?.(started.executionId);
+        const first = await Promise.race([responded.then((r) => ({ r })), started.done.then((d) => ({ d }))]);
+        if ('r' in first) return sendWebhookResponse(res, first.r);
+        if (sent) return sendWebhookResponse(res, await responded);
+        return this.finishWithoutResponse(res, first.d, true);
+      }
+
+      const started = start();
+      onStarted?.(started.executionId);
+      if (result.responseMode === 'onReceived') {
+        sendWebhookResponse(res, { statusCode: code, headers, body: result.onReceivedBody ?? { message: 'Workflow was started' } });
+        return;
+      }
+      // lastNode: wait for the end of the execution.
+      const detail = await started.done;
+      if (detail.status !== 'success') return this.finishWithoutResponse(res, detail, false);
+      const runs = detail.lastNodeExecuted ? detail.runData[detail.lastNodeExecuted] : undefined;
+      const items = runs?.[runs.length - 1]?.data.main[0] ?? [];
+      switch (result.lastNodeData ?? 'firstEntryJson') {
+        case 'allEntries':
+          return sendWebhookResponse(res, { statusCode: code, headers, body: items.map((i) => i.json) });
+        case 'noData':
+          return sendWebhookResponse(res, { statusCode: code, headers });
+        case 'firstEntryBinary': {
+          const property = result.binaryProperty || 'data';
+          const ref = items[0]?.binary?.[property];
+          if (!ref) {
+            json(res, 500, { message: `The last node has no binary data in property "${property}".` });
+            return;
+          }
+          const data = await this.o.binaryStore.read(ref);
+          return sendWebhookResponse(res, { statusCode: code, headers: { 'content-type': ref.mimeType, ...headers }, body: data });
+        }
+        default:
+          return sendWebhookResponse(res, { statusCode: code, headers, body: items[0]?.json ?? {} });
+      }
+    } catch (err) {
+      if (err instanceof RequestError) {
+        json(res, err.status, { message: err.message });
+        return;
+      }
+      this.o.logger.error('Webhook handling failed', err);
+      json(res, 500, { message: 'The webhook could not be processed.' });
+    }
+  }
+
+  private finishWithoutResponse(res: Response, detail: ExecutionDetail, respondNodeExpected: boolean) {
+    if (detail.status === 'waiting') {
+      json(res, 202, { message: 'Workflow is waiting', executionId: detail.id });
+    } else if (detail.status !== 'success') {
+      json(res, 500, { message: 'Error in workflow', error: detail.error?.message ?? detail.status, node: detail.error?.node ?? null, executionId: detail.id });
+    } else if (respondNodeExpected) {
+      json(res, 500, {
+        message: 'No "Respond to Webhook" node was executed',
+        hint: "Add a \"Respond to Webhook\" node on the path the data takes, or change the webhook's response mode.",
+        executionId: detail.id,
+      });
+    }
+  }
+
+  private preflight(kind: WebhookKind, req: Request, res: Response, rawPath: string) {
+    const match = this.o.registry.match(kind, String(req.headers['access-control-request-method'] ?? 'GET').toUpperCase(), rawPath);
+    if (!match || 'methods' in match) {
+      res.status(match ? 204 : 404).end();
+      return;
+    }
+    const node = match.reg.workflow.nodes.find((n) => n.name === match.reg.nodeName);
+    const type = node ? this.o.nodes.get(node.type) : undefined;
+    const origins = type?.webhook?.cors?.(withDefaults(type.properties, node?.parameters ?? {}));
+    this.applyCors(req, res, origins);
+    res.setHeader('Access-Control-Allow-Methods', [...match.reg.methods, 'OPTIONS'].join(', '));
+    res.setHeader('Access-Control-Allow-Headers', String(req.headers['access-control-request-headers'] ?? '*'));
+    res.setHeader('Access-Control-Max-Age', '600');
+    res.status(204).end();
+  }
+
+  private applyCors(req: Request, res: Response, origins: string | undefined) {
+    if (!origins) return;
+    const origin = String(req.headers.origin ?? '');
+    const list = origins.split(',').map((o) => o.trim());
+    if (list.includes('*')) res.setHeader('Access-Control-Allow-Origin', '*');
+    else if (origin && list.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+    }
+  }
+}

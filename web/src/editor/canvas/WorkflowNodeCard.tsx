@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo } from 'react';
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
-import { Check, CircleAlert, LoaderCircle, Pin, Plus, PowerOff } from 'lucide-react';
+import { Check, CircleAlert, Hourglass, LoaderCircle, Pin, Plus, PowerOff, Radio } from 'lucide-react';
 import { cn } from '../../components/ui/cn';
 import { iconFor, isTriggerType, resolveSubtitle, staticOutputs } from '../../lib/node-types';
 import { plural } from '../../lib/format';
@@ -15,6 +15,7 @@ export const WorkflowNodeCard = memo(function WorkflowNodeCard({ id, selected }:
   const node = useEditor((s) => s.nodes.find((n) => n.id === id));
   const live = useEditor((s) => (node ? s.execution.nodes[node.name] : undefined));
   const pinned = useEditor((s) => (node ? Boolean(s.pinData[node.name]) : false));
+  const listening = useEditor((s) => (node ? s.listening?.nodeName === node.name : false));
   const dynamic = useEditor((s) => s.dynamicOutputs[id]);
   const connections = useEditor((s) => s.connections);
   const types = useNodeTypeMap();
@@ -57,6 +58,8 @@ export const WorkflowNodeCard = memo(function WorkflowNodeCard({ id, selected }:
           status === 'running' && 'ff-node-running border-info',
           ok && !selected && 'border-success/80',
           status === 'error' && !selected && 'border-danger',
+          status === 'waiting' && !selected && 'border-warning',
+          listening && 'ff-node-listening',
           node.disabled && 'opacity-50',
         )}
       >
@@ -79,6 +82,8 @@ export const WorkflowNodeCard = memo(function WorkflowNodeCard({ id, selected }:
         {status === 'running' && <LoaderCircle size={16} className="absolute bottom-1.5 right-1.5 animate-spin text-info" />}
         {ok && <Check size={18} strokeWidth={3} className="absolute bottom-1.5 right-1.5 text-success" data-testid="node-success" />}
         {status === 'error' && <CircleAlert size={18} className="absolute bottom-1.5 right-1.5 text-danger" data-testid="node-error-badge" />}
+        {status === 'waiting' && <Hourglass size={16} className="absolute bottom-1.5 right-1.5 text-warning" data-testid="node-waiting" />}
+        {listening && <Radio size={15} className="absolute bottom-1.5 left-1.5 animate-pulse text-accent-hover" data-testid="node-listening" />}
 
         {inputs.map((input, i) => (
           <Handle
@@ -135,10 +140,10 @@ export const WorkflowNodeCard = memo(function WorkflowNodeCard({ id, selected }:
         {subtitle && <div className="truncate text-[11px] text-subtle">{subtitle}</div>}
         {live && live.status !== 'running' && (
           <div
-            className={cn('text-[11px] font-medium', status === 'error' ? 'text-danger' : 'text-success')}
+            className={cn('text-[11px] font-medium', status === 'error' ? 'text-danger' : status === 'waiting' ? 'text-warning' : 'text-success')}
             data-testid="node-item-count"
           >
-            {status === 'error' ? 'Error' : plural(live.itemCount, 'item')}
+            {status === 'error' ? 'Error' : status === 'waiting' ? 'Waiting…' : plural(live.itemCount, 'item')}
             {live.runs > 1 && <span className="text-subtle"> · {live.runs} runs</span>}
           </div>
         )}

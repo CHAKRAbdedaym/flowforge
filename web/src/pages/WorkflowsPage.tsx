@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router';
 import { Pencil, Plus, Trash2, Workflow } from 'lucide-react';
 import type { WorkflowSummary } from '@flowforge/shared';
@@ -11,7 +12,9 @@ import { errorMessage } from '../lib/api';
 import { timeAgo } from '../lib/format';
 import { toast } from '../lib/toast';
 import { useTitle } from '../lib/useTitle';
-import { useCreateWorkflow, useDeleteWorkflow, useRenameWorkflow, useWorkflows } from '../lib/workflows-api';
+import { cn } from '../components/ui/cn';
+import { wsClient } from '../lib/ws';
+import { useCreateWorkflow, useDeleteWorkflow, useRenameWorkflow, useToggleActive, useWorkflows, workflowsKey } from '../lib/workflows-api';
 import { PageHeader } from './PageHeader';
 
 function Row({ wf }: { wf: WorkflowSummary }) {
@@ -20,6 +23,8 @@ function Row({ wf }: { wf: WorkflowSummary }) {
   const [confirm, setConfirm] = useState(false);
   const rename = useRenameWorkflow();
   const remove = useDeleteWorkflow();
+  const toggle = useToggleActive();
+  const problem = wf.active ? wf.triggerError : wf.activationError;
   const commit = () => {
     setRenaming(false);
     if (name.trim() && name.trim() !== wf.name) {
@@ -54,6 +59,36 @@ function Row({ wf }: { wf: WorkflowSummary }) {
         <div className="text-[12px] text-subtle">
           {wf.nodeCount} node{wf.nodeCount === 1 ? '' : 's'} · updated {timeAgo(wf.updatedAt)} · created {new Date(wf.createdAt).toLocaleDateString()}
         </div>
+        {problem && (
+          <div className="truncate text-[12px] text-danger" data-testid="workflow-row-error" title={problem}>
+            {problem}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-2" title={problem ?? undefined}>
+        <span className={cn('text-[12px]', wf.active ? (wf.triggerError ? 'text-danger' : 'text-success') : 'text-subtle')} data-testid="workflow-row-status">
+          {wf.active ? 'Active' : 'Inactive'}
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={wf.active}
+          aria-label={wf.active ? 'Deactivate' : 'Activate'}
+          data-testid="workflow-row-toggle"
+          disabled={toggle.isPending}
+          onClick={() =>
+            toggle.mutate(
+              { id: wf.id, active: !wf.active },
+              {
+                onSuccess: () => toast.success(wf.active ? 'Workflow deactivated' : 'Workflow activated'),
+                onError: (err) => toast.error('Could not activate the workflow', errorMessage(err)),
+              },
+            )
+          }
+          className={cn('relative h-5 w-9 rounded-full transition-colors disabled:opacity-50', wf.active ? 'bg-success' : 'bg-line-strong')}
+        >
+          <span className={cn('absolute top-0.5 size-4 rounded-full bg-white transition-all', wf.active ? 'left-[18px]' : 'left-0.5')} />
+        </button>
       </div>
       <div className="flex gap-1 opacity-60 group-hover:opacity-100">
         <button type="button" title="Rename" data-testid="workflow-rename" onClick={() => setRenaming(true)} className="rounded p-2 text-subtle hover:bg-panel-3 hover:text-fg">
@@ -85,6 +120,15 @@ function Row({ wf }: { wf: WorkflowSummary }) {
 
 export function WorkflowsPage() {
   useTitle('Workflows');
+  const client = useQueryClient();
+  // Activation changes (also from other tabs or trigger failures) refresh the list.
+  useEffect(
+    () =>
+      wsClient.onEvent((e) => {
+        if (e.type.startsWith('workflow.')) void client.invalidateQueries({ queryKey: workflowsKey });
+      }),
+    [client],
+  );
   const navigate = useNavigate();
   const workflows = useWorkflows();
   const create = useCreateWorkflow();

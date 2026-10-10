@@ -13,6 +13,9 @@ interface Row {
   version_id: string;
   created_at: string;
   updated_at: string;
+  activation_error: string | null;
+  trigger_error: string | null;
+  trigger_error_at: string | null;
 }
 
 export interface WorkflowInput {
@@ -35,6 +38,9 @@ function toRecord(row: Row): WorkflowRecord {
     versionId: row.version_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    activationError: row.activation_error,
+    triggerError: row.trigger_error,
+    triggerErrorAt: row.trigger_error_at,
   };
 }
 
@@ -42,7 +48,9 @@ export class WorkflowsRepo {
   constructor(private readonly db: DB) {}
 
   list(): WorkflowSummary[] {
-    const rows = this.db.prepare('SELECT id, name, active, nodes, created_at, updated_at FROM workflows ORDER BY updated_at DESC').all() as Row[];
+    const rows = this.db
+      .prepare('SELECT id, name, active, nodes, created_at, updated_at, activation_error, trigger_error, trigger_error_at FROM workflows ORDER BY updated_at DESC')
+      .all() as Row[];
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
@@ -50,6 +58,9 @@ export class WorkflowsRepo {
       nodeCount: (JSON.parse(r.nodes) as WorkflowNode[]).filter((n) => n.type !== 'flowforge.stickyNote').length,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      activationError: r.activation_error,
+      triggerError: r.trigger_error,
+      triggerErrorAt: r.trigger_error_at,
     }));
   }
 
@@ -122,7 +133,39 @@ export class WorkflowsRepo {
 
   /** For runs: the stored workflow as plain WorkflowData. */
   toWorkflowData(record: WorkflowRecord): WorkflowData {
-    const { versionId: _v, createdAt: _c, updatedAt: _u, ...data } = record;
+    const { versionId: _v, createdAt: _c, updatedAt: _u, activationError: _a, triggerError: _t, triggerErrorAt: _ta, ...data } = record;
     return data;
+  }
+
+  listActiveIds(): string[] {
+    return (this.db.prepare('SELECT id FROM workflows WHERE active = 1').all() as { id: string }[]).map((r) => r.id);
+  }
+
+  /** Marks the workflow (in)active; activating clears old errors. */
+  setActive(id: string, active: boolean): void {
+    this.db
+      .prepare(
+        active
+          ? 'UPDATE workflows SET active = 1, activation_error = NULL, trigger_error = NULL, trigger_error_at = NULL WHERE id = ?'
+          : 'UPDATE workflows SET active = 0, trigger_error = NULL, trigger_error_at = NULL WHERE id = ?',
+      )
+      .run(id);
+  }
+
+  setActivationError(id: string, message: string | null): void {
+    this.db.prepare('UPDATE workflows SET activation_error = ? WHERE id = ?').run(message, id);
+  }
+
+  setTriggerError(id: string, message: string | null): void {
+    this.db.prepare('UPDATE workflows SET trigger_error = ?, trigger_error_at = ? WHERE id = ?').run(message, message ? new Date().toISOString() : null, id);
+  }
+
+  getStaticData(id: string): Record<string, Record<string, unknown>> {
+    const row = this.db.prepare('SELECT static_data FROM workflows WHERE id = ?').get(id) as { static_data: string } | undefined;
+    return row ? (JSON.parse(row.static_data) as Record<string, Record<string, unknown>>) : {};
+  }
+
+  setStaticData(id: string, data: Record<string, Record<string, unknown>>): void {
+    this.db.prepare('UPDATE workflows SET static_data = ? WHERE id = ?').run(JSON.stringify(data), id);
   }
 }

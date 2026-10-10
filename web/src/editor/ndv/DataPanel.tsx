@@ -69,6 +69,8 @@ export function InputPanel({ items, fromNode, inputLabels, inputIndex, onInputIn
 }
 
 interface OutputPanelProps {
+  /** Replaces the "Execute this node" empty state (trigger nodes: listen for a test event). */
+  emptyState?: React.ReactNode;
   runs: NodeRun[];
   outputs: ConnectionSpec[];
   pinned?: Item[];
@@ -79,7 +81,7 @@ interface OutputPanelProps {
   onUnpin(): void;
 }
 
-export function OutputPanel({ runs, outputs, pinned, canPin, running, onExecute, onPin, onUnpin }: OutputPanelProps) {
+export function OutputPanel({ emptyState, runs, outputs, pinned, canPin, running, onExecute, onPin, onUnpin }: OutputPanelProps) {
   const [view, setView] = useState<ViewMode>(savedView);
   const [runIndex, setRunIndex] = useState<number | null>(null);
   const [outputIndex, setOutputIndex] = useState(0);
@@ -142,7 +144,9 @@ export function OutputPanel({ runs, outputs, pinned, canPin, running, onExecute,
         </div>
       )}
       {run?.error && !showPinned && <ErrorCard error={run.error} />}
-      {!run && !showPinned ? (
+      {!run && !showPinned && emptyState ? (
+        emptyState
+      ) : !run && !showPinned ? (
         <Empty
           text="Execute this node to see its output."
           action={

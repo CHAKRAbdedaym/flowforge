@@ -34,6 +34,16 @@ export class WorkflowOperationError extends FlowError {}
 
 export class ExecutionTimeoutError extends WorkflowOperationError {}
 
+/** Thrown by the Wait node: the execution pauses and is resumed later (time, webhook call or form). */
+export class WaitSignal extends Error {
+  constructor(
+    readonly resumeAt: Date | null,
+    readonly kind: 'time' | 'webhook' | 'form',
+  ) {
+    super('Execution is waiting');
+  }
+}
+
 /** A node needs credentials that are not configured (the UI then offers "Open Credentials"). */
 export class MissingCredentialError extends NodeOperationError {
   constructor(

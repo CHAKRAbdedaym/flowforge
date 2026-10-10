@@ -28,6 +28,7 @@ export type PropertyType =
   | 'assignments'
   | 'formFields'
   | 'workflowSelector'
+  | 'webhookUrls'
   | 'notice';
 
 export interface PropertyOption {
@@ -62,6 +63,8 @@ export interface NodeProperty {
     language?: 'javascript' | 'json' | 'html' | 'markdown';
     multipleValues?: boolean;
     loadOptions?: string;
+    /** webhookUrls: URL prefixes (e.g. "webhook" → /webhook/… and /webhook-test/…). */
+    urlPrefix?: string;
   };
   /** If true the value is never evaluated as an expression (e.g. code). */
   noDataExpression?: boolean;

@@ -93,6 +93,22 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_workflows_updated ON workflows(updated_at DESC);
     `,
   },
+  {
+    id: 4,
+    name: 'triggers_and_waiting',
+    sql: `
+      ALTER TABLE workflows ADD COLUMN static_data TEXT NOT NULL DEFAULT '{}';
+      ALTER TABLE workflows ADD COLUMN activation_error TEXT;
+      ALTER TABLE workflows ADD COLUMN trigger_error TEXT;
+      ALTER TABLE workflows ADD COLUMN trigger_error_at TEXT;
+      ALTER TABLE executions ADD COLUMN waiting_node TEXT;
+      ALTER TABLE executions ADD COLUMN wait_kind TEXT;
+      ALTER TABLE executions ADD COLUMN depth INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE execution_data ADD COLUMN state TEXT;
+      ALTER TABLE execution_data ADD COLUMN run_options TEXT;
+      CREATE INDEX idx_executions_waiting ON executions(status, wait_till);
+    `,
+  },
 ];
 
 export function runMigrations(db: DB, migrations: Migration[] = MIGRATIONS): number {

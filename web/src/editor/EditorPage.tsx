@@ -9,6 +9,7 @@ import { wsClient } from '../lib/ws';
 import { useNodeTypes } from '../lib/node-types';
 import { useTitle } from '../lib/useTitle';
 import { useWorkflow } from '../lib/workflows-api';
+import { setNodeTypes } from './actions';
 import { addSticky, Canvas } from './canvas/Canvas';
 import { CommandPalette } from './CommandPalette';
 import { NodeCreator } from './creator/NodeCreator';
@@ -18,6 +19,7 @@ import { NodeDetailsView } from './ndv/NodeDetailsView';
 import { ShortcutsDialog } from './ShortcutsDialog';
 import { editor, useEditor } from './store';
 import { TopBar } from './TopBar';
+import { WorkflowSettingsDialog } from './WorkflowSettingsDialog';
 import type { NodeTypeInfo } from '@flowforge/shared';
 
 function EditorShell({ list, byType }: { list: NodeTypeInfo[]; byType: Map<string, NodeTypeInfo> }) {
@@ -26,6 +28,7 @@ function EditorShell({ list, byType }: { list: NodeTypeInfo[]; byType: Map<strin
   const dirty = useEditor((s) => s.dirty);
   const rf = useReactFlow();
   useTitle(name || 'Workflow');
+  useEffect(() => setNodeTypes(byType), [byType]);
   useEffect(() => wsClient.connect(), []);
   useLiveExecution(workflowId);
   useEditorShortcuts(byType);
@@ -60,6 +63,7 @@ function EditorShell({ list, byType }: { list: NodeTypeInfo[]; byType: Map<strin
         onAddSticky={() => addSticky(byType, rf.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }))}
       />
       <ShortcutsDialog />
+      <WorkflowSettingsDialog />
       {blocker.state === 'blocked' && (
         <ConfirmDialog
           title="Leave without saving?"

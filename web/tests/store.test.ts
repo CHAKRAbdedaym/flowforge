@@ -29,6 +29,10 @@ const record: WorkflowRecord = {
   versionId: 'v1',
   createdAt: '',
   updatedAt: '',
+  active: false,
+  activationError: null,
+  triggerError: null,
+  triggerErrorAt: null,
 };
 
 const ev = (type: ServerEvent['type'], data: Record<string, unknown>, seq?: number) =>
@@ -156,5 +160,42 @@ describe('live execution events', () => {
     expect(s.execution.nodes['Edit Fields']).toMatchObject({ status: 'success', itemCount: 2 });
     expect(Object.values(s.execution.edges)[0]!.count).toBe(1);
     expect(s.runData?.['Edit Fields']?.[0]?.data.main[0]).toHaveLength(2);
+  });
+});
+
+describe('waiting, activation and test listeners', () => {
+  beforeEach(() => {
+    editor.addNode(manual);
+    editor.addNode(set);
+    editor.prepareRun();
+    editor.applyEvent(ev('execution.started', { mode: 'manual', startedAt: new Date().toISOString() }, 1));
+  });
+
+  it('a waiting execution stays active, and continues when resumed', () => {
+    editor.applyEvent(ev('node.started', { nodeName: 'Edit Fields', runIndex: 0 }, 2));
+    editor.applyEvent(ev('execution.waiting', { nodeName: 'Edit Fields', waitTill: null, kind: 'webhook', resumeUrl: 'http://x/webhook-waiting/7' }, 3));
+    let ex = useEditor.getState().execution;
+    expect(ex.status).toBe('waiting');
+    expect(ex.waiting).toMatchObject({ node: 'Edit Fields', kind: 'webhook' });
+    expect(ex.nodes['Edit Fields']!.status).toBe('waiting');
+    editor.applyEvent(ev('execution.started', { mode: 'manual', startedAt: new Date().toISOString() }, 4));
+    ex = useEditor.getState().execution;
+    expect(ex.status).toBe('running');
+    expect(ex.waiting).toBeUndefined();
+    expect(ex.nodes['Edit Fields']).toBeUndefined();
+  });
+
+  it('follows activation and listener events of this workflow only', () => {
+    const wf = (type: ServerEvent['type'], data: Record<string, unknown>) => ({ type, ts: 0, data: { workflowId: 'wf1', ...data } }) as unknown as ServerEvent;
+    editor.applyEvent(wf('workflow.activated', {}));
+    expect(useEditor.getState().active).toBe(true);
+    editor.applyEvent(wf('workflow.activationError', { message: 'Poll: HTTP 500', runtime: true }));
+    expect(useEditor.getState()).toMatchObject({ active: true, triggerError: 'Poll: HTTP 500' });
+    editor.applyEvent({ ...wf('workflow.deactivated', {}), data: { workflowId: 'other' } } as ServerEvent);
+    expect(useEditor.getState().active).toBe(true);
+    editor.applyEvent(wf('trigger.listening', { nodeName: 'Webhook', testUrl: 'http://x/webhook-test/a', expiresAt: '' }));
+    expect(useEditor.getState().listening?.testUrl).toBe('http://x/webhook-test/a');
+    editor.applyEvent(wf('trigger.received', { nodeName: 'Webhook', executionId: '9' }));
+    expect(useEditor.getState().listening).toBeNull();
   });
 });

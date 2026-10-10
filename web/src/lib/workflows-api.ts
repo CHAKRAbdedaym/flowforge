@@ -1,5 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ExecutionDetail, RunWorkflowRequest, WorkflowData, WorkflowRecord, WorkflowSummary } from '@flowforge/shared';
+import type {
+  ExecutionDetail,
+  RunWorkflowRequest,
+  TestListenRequest,
+  TestListenResponse,
+  WorkflowData,
+  WorkflowRecord,
+  WorkflowSummary,
+} from '@flowforge/shared';
 import { api } from './api';
 
 export const workflowsKey = ['workflows'] as const;
@@ -50,3 +58,19 @@ export const runWorkflow = (body: RunWorkflowRequest) => api<{ executionId: stri
 export const stopExecution = (id: string) => api<{ stopped: boolean }>(`/executions/${id}/stop`, { method: 'POST' });
 
 export const fetchExecution = (id: string) => api<ExecutionDetail>(`/executions/${id}`);
+
+export const activateWorkflow = (id: string) => api<WorkflowRecord>(`/workflows/${id}/activate`, { method: 'POST', body: {} });
+
+export const deactivateWorkflow = (id: string) => api<WorkflowRecord>(`/workflows/${id}/deactivate`, { method: 'POST', body: {} });
+
+export const testListen = (id: string, body: TestListenRequest) => api<TestListenResponse>(`/workflows/${id}/test-listen`, { method: 'POST', body });
+
+export const cancelTestListen = (id: string) => api<{ stopped: boolean }>(`/workflows/${id}/test-listen`, { method: 'DELETE' });
+
+export function useToggleActive() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) => (active ? activateWorkflow(id) : deactivateWorkflow(id)),
+    onSettled: () => void client.invalidateQueries({ queryKey: workflowsKey }),
+  });
+}

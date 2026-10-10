@@ -97,7 +97,12 @@ function handle(op: string, args: unknown[], { scope, itemIndex }: EvalState): u
     case 'workflow':
       return { id: scope.workflow.id ?? null, name: scope.workflow.name, active: Boolean(scope.workflow.active) };
     case 'execution':
-      return { id: scope.executionId, mode: scope.mode === 'manual' ? 'test' : 'production' };
+      return {
+        id: scope.executionId,
+        mode: scope.mode === 'manual' ? 'test' : 'production',
+        resumeUrl: scope.resumeUrl ?? '',
+        resumeFormUrl: scope.resumeFormUrl ?? '',
+      };
     case 'env':
       if (scope.env === null) {
         throw new ExpressionError('Access to $env is disabled', { hint: 'An administrator can allow it in Settings.' });

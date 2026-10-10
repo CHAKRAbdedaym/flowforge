@@ -16,4 +16,7 @@ export interface ExpressionScope {
   variables: Record<string, string>;
   /** null = `$env` access disabled in settings. */
   env: Record<string, string> | null;
+  /** $execution.resumeUrl / resumeFormUrl (Wait node). */
+  resumeUrl?: string;
+  resumeFormUrl?: string;
 }

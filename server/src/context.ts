@@ -4,6 +4,7 @@ import type { DB } from './db/index.js';
 import { ExecutionsRepo } from './db/repositories/executions.js';
 import { SessionsRepo } from './db/repositories/sessions.js';
 import { UsersRepo } from './db/repositories/users.js';
+import { WorkflowsRepo } from './db/repositories/workflows.js';
 import { BinaryStore } from './engine/binary-store.js';
 import type { Logger } from './logger.js';
 import type { NodeRegistry } from './nodes/registry.js';
@@ -17,6 +18,7 @@ export interface AppContext {
   users: UsersRepo;
   sessions: SessionsRepo;
   executionsRepo: ExecutionsRepo;
+  workflowsRepo: WorkflowsRepo;
   registry: NodeRegistry;
   binaryStore: BinaryStore;
 }
@@ -30,6 +32,7 @@ export function createContext(config: AppConfig, db: DB, logger: Logger, registr
     users: new UsersRepo(db),
     sessions: new SessionsRepo(db),
     executionsRepo: new ExecutionsRepo(db),
+    workflowsRepo: new WorkflowsRepo(db),
     registry,
     binaryStore: new BinaryStore(join(config.dataDir, 'binary')),
   };

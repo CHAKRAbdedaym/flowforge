@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, LoaderCircle, Pin, PowerOff, RotateCcw } from 'lucide-react';
+import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, Hourglass, LoaderCircle, Pin, PowerOff, RotateCcw } from 'lucide-react';
 import { cn } from '../../components/ui/cn';
 import { duration, plural } from '../../lib/format';
 import { editor, isRunning, useEditor, type RunState } from '../store';
@@ -7,6 +7,7 @@ const STATUS_TEXT: Partial<Record<RunState, string>> = {
   starting: 'Starting…',
   queued: 'Waiting in queue…',
   running: 'Running…',
+  waiting: 'Waiting…',
   success: 'Succeeded',
   error: 'Failed',
   canceled: 'Stopped',
@@ -22,7 +23,9 @@ export function ExecutionLog() {
   return (
     <div className="border-t border-line bg-panel" data-testid="execution-log">
       <button type="button" onClick={() => editor.setUi({ logOpen: !open })} className="flex w-full items-center gap-2 px-4 py-2 text-left text-[12.5px]">
-        {isRunning(ex.status) ? (
+        {ex.status === 'waiting' ? (
+          <Hourglass size={14} className="text-warning" />
+        ) : isRunning(ex.status) ? (
           <LoaderCircle size={14} className="animate-spin text-info" />
         ) : ex.status === 'success' ? (
           <CircleCheck size={14} className="text-success" />
@@ -37,6 +40,24 @@ export function ExecutionLog() {
         {ex.error && !isRunning(ex.status) && <span className="truncate text-danger">· {ex.error.message}</span>}
         <span className="ml-auto text-subtle">{open ? <ChevronDown size={15} /> : <ChevronUp size={15} />}</span>
       </button>
+      {ex.status === 'waiting' && ex.waiting && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-line bg-warning/5 px-4 py-2 text-[12.5px]" data-testid="waiting-info">
+          <Hourglass size={13} className="text-warning" />
+          <span>
+            "{ex.waiting.node}" is waiting
+            {ex.waiting.till
+              ? ` until ${new Date(ex.waiting.till).toLocaleString()}`
+              : ex.waiting.kind === 'form'
+                ? ' for the form to be submitted'
+                : ' for a call to its resume URL'}
+          </span>
+          {ex.waiting.kind !== 'time' && (
+            <a href={ex.waiting.resumeUrl} target="_blank" rel="noreferrer" className="truncate font-mono text-[12px] text-accent-hover underline" data-testid="resume-url">
+              {ex.waiting.resumeUrl}
+            </a>
+          )}
+        </div>
+      )}
       {open && (
         <div className="max-h-40 overflow-y-auto border-t border-line px-2 py-1">
           {ex.log.length === 0 && <div className="px-2 py-2 text-[12px] text-subtle">Waiting for the first node…</div>}
