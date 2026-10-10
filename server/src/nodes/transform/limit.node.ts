@@ -9,6 +9,7 @@ export default defineNode({
     group: 'transform',
     version: 1,
     defaults: { name: 'Limit', color: '#9b6dd7' },
+    subtitle: 'Max {{maxItems}} items',
     inputs: [{ type: 'main' }],
     outputs: [{ type: 'main' }],
     keywords: ['top', 'first', 'last', 'head', 'tail'],

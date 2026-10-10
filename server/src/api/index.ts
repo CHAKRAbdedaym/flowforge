@@ -9,6 +9,7 @@ import { devRouter } from './dev.js';
 import { executionsRouter } from './executions.js';
 import { expressionsRouter } from './expressions.js';
 import { nodeTypesRouter } from './node-types.js';
+import { workflowsRouter } from './workflows.js';
 
 export function apiRouter(ctx: AppServices): Router {
   const router = Router();
@@ -48,6 +49,7 @@ export function apiRouter(ctx: AppServices): Router {
     res.json(body);
   });
 
+  router.use('/workflows', workflowsRouter(ctx));
   router.use('/node-types', nodeTypesRouter(ctx));
   router.use('/expressions', expressionsRouter(ctx));
   router.use('/executions', executionsRouter(ctx));

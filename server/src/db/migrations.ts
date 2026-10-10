@@ -74,6 +74,25 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: 3,
+    name: 'workflows',
+    sql: `
+      CREATE TABLE workflows (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        active      INTEGER NOT NULL DEFAULT 0,
+        nodes       TEXT NOT NULL DEFAULT '[]',
+        connections TEXT NOT NULL DEFAULT '{}',
+        settings    TEXT NOT NULL DEFAULT '{}',
+        pin_data    TEXT NOT NULL DEFAULT '{}',
+        version_id  TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+      );
+      CREATE INDEX idx_workflows_updated ON workflows(updated_at DESC);
+    `,
+  },
 ];
 
 export function runMigrations(db: DB, migrations: Migration[] = MIGRATIONS): number {

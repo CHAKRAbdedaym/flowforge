@@ -16,7 +16,8 @@ export default defineNode({
     icon: 'lucide:repeat',
     group: 'flow',
     version: 1,
-    defaults: { name: 'Loop Over Items', color: '#007755' },
+    defaults: { name: 'Loop Over Items', color: '#26a69a' },
+    subtitle: 'Batch size {{batchSize}}',
     inputs: [{ type: 'main' }],
     outputs: [
       { type: 'main', displayName: 'done' },

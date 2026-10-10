@@ -10,6 +10,7 @@ export default defineNode({
     group: 'flow',
     version: 1,
     defaults: { name: 'Stop and Error', color: '#ff6d5a' },
+    subtitle: '{{errorType}}',
     inputs: [{ type: 'main' }],
     outputs: [],
     keywords: ['throw', 'fail', 'exception'],

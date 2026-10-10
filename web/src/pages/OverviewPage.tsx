@@ -59,7 +59,7 @@ const PHASES: Array<[string, string]> = [
   ['7', 'Workflows, executions, versions, variables, settings, dashboard'],
   ['8', 'Time travel, Demo Mode, examples, teacher demo script'],
 ];
-const DONE_PHASES = new Set(['0']);
+const DONE_PHASES = new Set(['0', '1', '2']);
 
 export function OverviewPage({ user }: { user: PublicUser }) {
   useTitle('Overview');

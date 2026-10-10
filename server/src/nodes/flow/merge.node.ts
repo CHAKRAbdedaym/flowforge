@@ -127,6 +127,7 @@ export default defineNode({
     group: 'flow',
     version: 1,
     defaults: { name: 'Merge', color: '#00bbcc' },
+    subtitle: '{{mode}}',
     inputs: [
       { type: 'main', displayName: 'Input 1' },
       { type: 'main', displayName: 'Input 2' },

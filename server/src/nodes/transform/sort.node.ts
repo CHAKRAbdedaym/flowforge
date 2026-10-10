@@ -25,6 +25,7 @@ export default defineNode({
     group: 'transform',
     version: 1,
     defaults: { name: 'Sort', color: '#9b6dd7' },
+    subtitle: '{{type}}',
     inputs: [{ type: 'main' }],
     outputs: [{ type: 'main' }],
     keywords: ['order', 'shuffle', 'random'],

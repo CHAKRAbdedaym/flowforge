@@ -53,23 +53,27 @@
 - [ ] P0 Sub-workflows (Execute Workflow + Execute Workflow Trigger) (Ph 3)
 
 ## Editor + live visualization (all P0)
-- [ ] P0 Canvas: drag/drop nodes, connect, delete, pan/zoom (Ph 2)
-- [ ] P0 Multi-select, copy/paste (n8n-style JSON on the clipboard) (Ph 2)
-- [ ] P0 Minimap (Ph 2)
-- [ ] P0 Undo / redo (Ph 2)
-- [ ] P0 Auto-layout (Ph 2)
-- [ ] P0 Cmd/Ctrl+K command palette (Ph 2)
-- [ ] P0 Sticky notes (markdown, colors, resize) (Ph 2)
-- [ ] P0 Node creator panel with search (Ph 2)
-- [ ] P0 Node panel: INPUT / PARAMETERS / OUTPUT with Table + JSON (+ Schema) views (Ph 2)
-- [ ] P0 Parameter forms generated from the node schema (Ph 2)
-- [ ] P0 Expression editor: Fixed/Expression toggle, autocomplete, live preview, drag field from INPUT (Ph 2)
-- [ ] P0 Node settings tab (retry, on error, always output, execute once, notes) (Ph 2)
-- [ ] P0 Save / open workflows, unsaved-changes guard, rename (Ph 2)
-- [ ] P0 Pin / unpin data from the output panel (Ph 2)
-- [ ] P0 Live execution over WebSocket: running nodes glow, success/error state, item counts (Ph 2)
-- [ ] P0 Particles on edges + data preview on hover (Ph 2, polished Ph 8)
+- [x] P0 Canvas: drag/drop nodes, connect, delete, pan/zoom (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Multi-select, copy/paste (n8n-style JSON on the clipboard) (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Minimap (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Undo / redo (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Auto-layout (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Cmd/Ctrl+K command palette (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Sticky notes (markdown, colors, resize) (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Node creator panel with search (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Node panel: INPUT / PARAMETERS / OUTPUT with Table + JSON (+ Schema) views (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Parameter forms generated from the node schema (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Expression editor: Fixed/Expression toggle, autocomplete, live preview, drag field from INPUT (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Node settings tab (retry, on error, always output, execute once, notes) (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Save / open workflows, unsaved-changes guard, rename (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Pin / unpin data from the output panel (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Live execution over WebSocket: running nodes glow, success/error state, item counts (Ph 2) — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
+- [x] P0 Particles on edges + item-count labels + execution log panel (Ph 2) — data preview on hover / polish in Ph 8 — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
 - [ ] P0 Activate / deactivate workflow with visible status and activation errors (Ph 3)
+
+- [x] P2 Workflows list: create, open, rename, delete (Ph 2) — e2e: `editor-canvas.spec.ts` (tags/search/duplicate in Ph 7)
+- [ ] P0 Fallback JSON editor for unknown parameter types (Ph 2) — implemented, not testable until a node uses such a type (Ph 3B)
+- [ ] P0 Error card "Open Credentials" button (Ph 2) — implemented, tested with real credential nodes in Ph 3B
 
 ## Triggers
 - [x] P0 Manual Trigger (Ph 1) — test: `engine.test.ts`
@@ -96,7 +100,7 @@
 - [x] P0 Switch (rules + expression mode, fallback output) (Ph 1) — test: `nodes.test.ts`; manual: fixture 07
 - [x] P0 Merge: append, combine by matching fields (5 join modes), by position, all combinations, choose branch (Ph 1) — test: `engine.test.ts`; manual: fixtures 03, 06
 - [x] P0 No Operation (Ph 1) — test: `engine.test.ts`
-- [ ] P0 Sticky Note (Ph 2)
+- [x] P0 Sticky Note (Ph 2) — e2e: `editor-canvas.spec.ts`
 - [x] P2 Filter (kept / discarded) (Ph 1) — test: `nodes.test.ts`
 - [x] P2 Loop Over Items (Ph 1) — test: `engine.test.ts`; manual: fixture 04
 - [x] P2 Stop and Error (Ph 1) — test: `nodes.test.ts`; manual: fixture 08

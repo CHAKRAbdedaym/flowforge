@@ -9,9 +9,9 @@ const COLLAPSE_KEY = 'ff.sidebarCollapsed';
 export function AppLayout({ user }: { user: PublicUser }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1');
 
+  // Stays connected while moving between pages and the editor; signing out disconnects.
   useEffect(() => {
     wsClient.connect();
-    return () => wsClient.disconnect();
   }, []);
 
   const toggle = () =>

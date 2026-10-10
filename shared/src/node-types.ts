@@ -81,6 +81,8 @@ export interface NodeDescription {
   group: NodeGroup;
   version: number;
   defaults: { name: string; color?: string };
+  /** Shown under the node name. "{{param}}" is replaced by the parameter's value (option label for options). */
+  subtitle?: string;
   inputs: ConnectionSpec[];
   /** Static outputs; nodes with `dynamicOutputs` compute the real list from their parameters. */
   outputs: ConnectionSpec[];

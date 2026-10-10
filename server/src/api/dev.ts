@@ -2,24 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { ExecutionDetail, Item, RunData, WorkflowData } from '@flowforge/shared';
 import type { AppServices } from '../app.js';
-
-const NodeSchema = z.looseObject({
-  name: z.string().min(1),
-  type: z.string().min(1),
-  parameters: z.record(z.string(), z.unknown()).default({}),
-  position: z.tuple([z.number(), z.number()]).default([0, 0]),
-  id: z.string().optional(),
-  typeVersion: z.number().default(1),
-});
-
-const WorkflowSchema = z.looseObject({
-  name: z.string().default('Dev run'),
-  nodes: z.array(NodeSchema),
-  connections: z.record(z.string(), z.unknown()).default({}),
-});
+import { WorkflowBodySchema } from './schemas.js';
 
 const RequestSchema = z.object({
-  workflow: WorkflowSchema,
+  workflow: WorkflowBodySchema,
   startNode: z.string().optional(),
   destinationNode: z.string().optional(),
   runData: z.record(z.string(), z.unknown()).optional(),

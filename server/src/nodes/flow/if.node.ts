@@ -11,7 +11,7 @@ export default defineNode({
     icon: 'lucide:split',
     group: 'flow',
     version: 1,
-    defaults: { name: 'If', color: '#408000' },
+    defaults: { name: 'If', color: '#4caf50' },
     inputs: [{ type: 'main' }],
     outputs: [
       { type: 'main', displayName: 'true' },

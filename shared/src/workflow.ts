@@ -78,6 +78,33 @@ export interface WorkflowData {
   pinData?: Record<string, Item[]>;
 }
 
+/** A stored workflow as returned by the API. */
+export interface WorkflowRecord extends WorkflowData {
+  id: string;
+  versionId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowSummary {
+  id: string;
+  name: string;
+  active: boolean;
+  nodeCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body of POST /api/executions/run (manual run from the editor). */
+export interface RunWorkflowRequest {
+  workflow: WorkflowData;
+  startNode?: string;
+  /** "Execute step": run only what this node needs, then stop. */
+  destinationNode?: string;
+  /** Reuse data of this execution for nodes that do not need to run again. */
+  previousExecutionId?: string;
+}
+
 export type ExecutionMode = 'manual' | 'trigger' | 'webhook' | 'schedule' | 'form' | 'chat' | 'error' | 'subworkflow' | 'retry';
 
 export type ExecutionStatus = 'queued' | 'running' | 'waiting' | 'success' | 'error' | 'canceled' | 'crashed';
@@ -98,6 +125,10 @@ export interface SerializedError {
   itemIndex?: number;
   /** For expression errors: the expression that failed. */
   expression?: string;
+  /** For missing/invalid credentials: lets the UI offer "Open Credentials". */
+  credentialType?: string;
+  envVar?: string;
+  docsAnchor?: string;
 }
 
 export type NodeRunStatus = 'success' | 'error' | 'disabled' | 'pinned' | 'reused';

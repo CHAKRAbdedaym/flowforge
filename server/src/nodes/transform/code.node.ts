@@ -212,6 +212,7 @@ export default defineNode({
     group: 'transform',
     version: 1,
     defaults: { name: 'Code', color: '#ff9922' },
+    subtitle: '{{mode}}',
     inputs: [{ type: 'main' }],
     outputs: [{ type: 'main' }],
     keywords: ['javascript', 'js', 'script', 'function', 'custom'],

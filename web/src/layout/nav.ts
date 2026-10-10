@@ -15,7 +15,6 @@ export const MAIN_NAV: NavItem[] = [
     to: '/workflows',
     label: 'Workflows',
     icon: Workflow,
-    phase: '2',
     description: 'Create, open and organise workflows in the visual editor.',
   },
   {

@@ -54,6 +54,7 @@ const DescriptionSchema = z.object({
   group: z.enum(['trigger', 'flow', 'transform', 'files', 'network', 'integration', 'ai', 'ai-sub', 'note']),
   version: z.number().int().positive(),
   defaults: z.object({ name: z.string().min(1), color: z.string().optional() }),
+  subtitle: z.string().optional(),
   inputs: z.array(ConnectionSpecSchema),
   outputs: z.array(ConnectionSpecSchema),
   dynamicOutputs: z.boolean().optional(),

@@ -34,6 +34,20 @@ export class WorkflowOperationError extends FlowError {}
 
 export class ExecutionTimeoutError extends WorkflowOperationError {}
 
+/** A node needs credentials that are not configured (the UI then offers "Open Credentials"). */
+export class MissingCredentialError extends NodeOperationError {
+  constructor(
+    readonly credentialType: string,
+    readonly displayName: string,
+    readonly envVar?: string,
+    readonly docsAnchor?: string,
+  ) {
+    super(`${displayName} credentials are missing`, {
+      hint: `Add them on the Credentials page${envVar ? ` or set ${envVar} in .env` : ''}${docsAnchor ? ` (see API_SETUP.md${docsAnchor})` : ''}.`,
+    });
+  }
+}
+
 export class ExecutionCanceledError extends WorkflowOperationError {}
 
 export function serializeError(err: unknown, node?: string): SerializedError {
@@ -44,6 +58,11 @@ export function serializeError(err: unknown, node?: string): SerializedError {
     if (err.node ?? node) out.node = err.node ?? node;
     if (err.itemIndex !== undefined) out.itemIndex = err.itemIndex;
     if (err instanceof ExpressionError && err.expression) out.expression = err.expression;
+    if (err instanceof MissingCredentialError) {
+      out.credentialType = err.credentialType;
+      if (err.envVar) out.envVar = err.envVar;
+      if (err.docsAnchor) out.docsAnchor = err.docsAnchor;
+    }
     return out;
   }
   if (err instanceof Error) return { name: err.name || 'Error', message: err.message, ...(node ? { node } : {}) };
