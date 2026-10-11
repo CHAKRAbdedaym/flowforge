@@ -5,7 +5,7 @@ import type { Connections, Item, JsonObject, RunData, WorkflowData, WorkflowNode
 import { BinaryStore } from '../src/engine/binary-store.js';
 import { NodeOperationError } from '../src/engine/errors.js';
 import { ExpressionEngine } from '../src/engine/expressions/engine.js';
-import { WorkflowRunner, type RunRequest, type RunResult } from '../src/engine/runner.js';
+import { WorkflowRunner, type RunnerDeps, type RunRequest, type RunResult } from '../src/engine/runner.js';
 import { defineNode } from '../src/engine/types.js';
 import { silentLogger } from '../src/logger.js';
 import { loadNodeRegistry, type NodeRegistry } from '../src/nodes/registry.js';
@@ -105,14 +105,25 @@ export function getTestRegistry(): Promise<NodeRegistry> {
 
 let expressions: ExpressionEngine | undefined;
 
-export async function makeRunner(defaults: Partial<{ timeoutMs: number; maxNodeRuns: number }> = {}): Promise<WorkflowRunner> {
+/** What the runner of a test gets besides the engine itself (file nodes, Execute Command, credentials). */
+export interface RunnerExtras {
+  filesRoot?: string;
+  settings?: Record<string, unknown>;
+  credentials?: RunnerDeps['credentials'];
+  binaryStore?: BinaryStore;
+}
+
+export async function makeRunner(defaults: Partial<{ timeoutMs: number; maxNodeRuns: number; timezone: string }> = {}, extras: RunnerExtras = {}): Promise<WorkflowRunner> {
   expressions ??= new ExpressionEngine();
   return new WorkflowRunner({
     registry: await getTestRegistry(),
     expressions,
-    binaryStore: new BinaryStore(mkdtempSync(join(tmpdir(), 'ff-bin-'))),
+    binaryStore: extras.binaryStore ?? new BinaryStore(mkdtempSync(join(tmpdir(), 'ff-bin-'))),
     logger: silentLogger,
     defaults: { timeoutMs: 30_000, maxNodeRuns: 1000, timezone: 'UTC', ...defaults },
+    filesRoot: extras.filesRoot,
+    instanceSettings: extras.settings ? { get: (key) => extras.settings![key] } : undefined,
+    credentials: extras.credentials,
   });
 }
 
@@ -170,8 +181,8 @@ export interface TestRun extends RunResult {
   edges: string[];
 }
 
-export async function run(workflow: WorkflowData, req: Partial<RunRequest> = {}, runnerDefaults = {}): Promise<TestRun> {
-  const runner = await makeRunner(runnerDefaults);
+export async function run(workflow: WorkflowData, req: Partial<RunRequest> = {}, runnerDefaults = {}, extras: RunnerExtras = {}): Promise<TestRun> {
+  const runner = await makeRunner(runnerDefaults, extras);
   const order: string[] = [];
   const edges: string[] = [];
   const result = await runner.run({

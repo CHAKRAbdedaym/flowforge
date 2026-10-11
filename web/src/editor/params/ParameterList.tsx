@@ -13,6 +13,7 @@ import { Toggle } from '../../components/ui/Toggle';
 import { CodeMirror } from './CodeMirror';
 import { codeExtensions } from './cm';
 import { isGroupList, isOptionList, isPropertyList, isVisible, setIn, withDefaults, type Values } from './display';
+import { CurlImport } from './CurlImport';
 import { Field, inputClass, readDropped, type FixedKind } from './Field';
 import { FormBuilder } from './FormBuilder';
 import { WebhookUrls, WorkflowSelector } from './SpecialInputs';
@@ -170,6 +171,8 @@ export function ParameterInput({ property: p, value, root, onChange, testId, com
       );
     case 'webhookUrls':
       return <WebhookUrls property={p} />;
+    case 'curlImport':
+      return <CurlImport property={p} />;
     case 'formFields':
       return <FormBuilder value={value} root={root} onChange={onChange} testId={testId} displayName={p.displayName} />;
     case 'workflowSelector':

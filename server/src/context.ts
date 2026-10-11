@@ -5,6 +5,7 @@ import { CredentialTypeRegistry } from './credentials/registry.js';
 import { CredentialsService } from './credentials/service.js';
 import type { DB } from './db/index.js';
 import { CredentialsRepo } from './db/repositories/credentials.js';
+import { SettingsRepo } from './db/repositories/settings.js';
 import { ExecutionsRepo } from './db/repositories/executions.js';
 import { SessionsRepo } from './db/repositories/sessions.js';
 import { UsersRepo } from './db/repositories/users.js';
@@ -12,6 +13,7 @@ import { WorkflowsRepo } from './db/repositories/workflows.js';
 import { BinaryStore } from './engine/binary-store.js';
 import type { Logger } from './logger.js';
 import type { NodeRegistry } from './nodes/registry.js';
+import { InstanceSettingsService } from './settings/instance-settings.js';
 
 /** Everything a route or service needs, created once at startup and passed explicitly (easy to test). */
 export interface AppContext {
@@ -26,6 +28,7 @@ export interface AppContext {
   registry: NodeRegistry;
   binaryStore: BinaryStore;
   credentials: CredentialsService;
+  settings: InstanceSettingsService;
 }
 
 export function createContext(config: AppConfig, db: DB, logger: Logger, registry: NodeRegistry, options: { env?: NodeJS.ProcessEnv } = {}): AppContext {
@@ -47,5 +50,6 @@ export function createContext(config: AppConfig, db: DB, logger: Logger, registr
       logger,
       env: options.env,
     }),
+    settings: new InstanceSettingsService(new SettingsRepo(db)),
   };
 }

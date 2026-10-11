@@ -3,7 +3,7 @@ import { defineCredential } from './types.js';
 export default defineCredential({
   name: 'httpHeaderAuth',
   displayName: 'Header Auth',
-  description: 'A secret HTTP header (e.g. X-API-Key: …), e.g. to protect a Webhook.',
+  description: 'A secret HTTP header (e.g. X-API-Key: …): protects a Webhook, or sends an API key (HTTP Request).',
   icon: 'key-round',
   docsAnchor: '#webhook-authentication',
   properties: [

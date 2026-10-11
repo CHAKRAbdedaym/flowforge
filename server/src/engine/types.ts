@@ -70,8 +70,11 @@ export interface ExecuteContext {
   getNodeParameter<T = unknown>(name: string, itemIndex: number, fallback?: T): T;
   /** Raw stored parameter (no expression resolution). */
   getRawParameter(name: string): unknown;
-  /** Evaluates an expression string ("={{ … }}") for an item. */
-  evaluateExpression(expression: string, itemIndex: number): unknown;
+  /**
+   * Evaluates an expression string ("={{ … }}") for an item. `extra` adds values such as `$response`
+   * and `$pageCount` (HTTP Request pagination).
+   */
+  evaluateExpression(expression: string, itemIndex: number, extra?: Record<string, unknown>): unknown;
   /** True when the node is set to continue (regular output or error output) after a failure. */
   continueOnFail(): boolean;
   /**
@@ -98,6 +101,10 @@ export interface ExecuteContext {
   getResumeUrls(): { webhook: string; form: string };
   /** Credentials of a type declared in the node description. Throws MissingCredentialError. */
   getCredentials(type: string): Promise<ResolvedCredential>;
+  /** Folder the file nodes may read and write (./data/files by default). */
+  getFilesRoot(): string;
+  /** An instance setting switched on the Settings page (e.g. "executeCommandEnabled"). */
+  getInstanceSetting(key: string): unknown;
 }
 
 /** Given to trigger nodes while their workflow is active (or listening for a test event). */

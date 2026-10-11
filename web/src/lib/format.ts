@@ -18,3 +18,10 @@ export function duration(ms: number | null | undefined): string {
 }
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined || Number.isNaN(bytes)) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} kB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}

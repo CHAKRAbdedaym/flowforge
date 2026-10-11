@@ -29,6 +29,7 @@ export type PropertyType =
   | 'formFields'
   | 'workflowSelector'
   | 'webhookUrls'
+  | 'curlImport'
   | 'notice';
 
 export interface PropertyOption {

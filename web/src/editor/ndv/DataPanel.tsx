@@ -4,7 +4,7 @@ import type { ConnectionSpec, Item, NodeRun } from '@flowforge/shared';
 import { Button } from '../../components/ui/Button';
 import { cn } from '../../components/ui/cn';
 import { plural } from '../../lib/format';
-import { DataView, savedView, ViewSwitch, type ViewMode } from './DataView';
+import { DataView, hasBinary, savedView, ViewSwitch, type ViewMode } from './DataView';
 import { ErrorCard } from './ErrorCard';
 
 function Header({ title, count, children }: { title: string; count?: number; children?: React.ReactNode }) {
@@ -53,7 +53,7 @@ export function InputPanel({ items, fromNode, inputLabels, inputIndex, onInputIn
           </select>
         )}
         {fromNode && <span className="max-w-40 truncate text-[12px] text-muted">from {fromNode}</span>}
-        <ViewSwitch view={view} onChange={setView} />
+        <ViewSwitch view={view} onChange={setView} binary={hasBinary(items)} />
       </Header>
       {!fromNode ? (
         <Empty text="Nothing is connected to this input yet." />
@@ -121,7 +121,7 @@ export function OutputPanel({ emptyState, runs, outputs, pinned, canPin, running
               </button>
             )
           ))}
-        <ViewSwitch view={view} onChange={setView} />
+        <ViewSwitch view={view} onChange={setView} binary={hasBinary(items)} />
       </Header>
       {showPinned && (
         <div className="border-b border-line bg-[#7c4dff]/10 px-3 py-1.5 text-[12px] text-[#c4a6ff]" data-testid="pinned-banner">

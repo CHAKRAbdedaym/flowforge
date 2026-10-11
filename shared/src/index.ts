@@ -7,3 +7,4 @@ export * from './node-types.js';
 export * from './conditions.js';
 export * from './credentials.js';
 export * from './forms.js';
+export * from './settings.js';

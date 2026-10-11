@@ -153,6 +153,15 @@ describe('data access variables', () => {
     expect(ev('={{ $vars.company }}')).toBe('FlowForge');
     expect(ev('={{ $env.HOME }}')).toBe('/home/test');
     expect(() => ev('={{ $env.HOME }}', 0, scope({ env: null }))).toThrow(/Access to \$env is disabled/);
+    // The message and the hint of an error raised by a global ($env, $response…) arrive unchanged.
+    let disabled: { message?: string; hint?: string } = {};
+    try {
+      ev('={{ $env.HOME }}', 0, scope({ env: null }));
+    } catch (err) {
+      disabled = err as { message?: string; hint?: string };
+    }
+    expect(disabled.message).toBe('Access to $env is disabled');
+    expect(disabled.hint).toBe('An administrator can allow it in Settings.');
   });
 });
 

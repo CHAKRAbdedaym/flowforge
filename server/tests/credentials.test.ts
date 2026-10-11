@@ -85,7 +85,7 @@ describe('credentials API', () => {
   it('lists the credential types with their schema', async () => {
     const { agent } = await app();
     const types = (await agent.get('/api/credential-types')).body as CredentialTypeInfo[];
-    expect(types.map((x) => x.name).sort()).toEqual(['httpBasicAuth', 'httpHeaderAuth', 'smtp']);
+    expect(types.map((x) => x.name).sort()).toEqual(['httpBasicAuth', 'httpBearerAuth', 'httpHeaderAuth', 'httpQueryAuth', 'smtp']);
     const smtpType = types.find((x) => x.name === 'smtp')!;
     expect(smtpType.testable).toBe(true);
     expect(smtpType.envConfigured).toBe(false);

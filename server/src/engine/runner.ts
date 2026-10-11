@@ -76,6 +76,10 @@ export interface RunnerDeps {
   defaults: { timeoutMs: number; maxNodeRuns: number; timezone: string };
   /** Credential lookup for integration nodes (absent in plain engine tests). */
   credentials?: CredentialsProvider;
+  /** Folder of the file nodes (./data/files). */
+  filesRoot?: string;
+  /** Switches of the Settings page (e.g. Execute Command). */
+  instanceSettings?: { get(key: string): unknown };
 }
 
 interface Task {
@@ -476,6 +480,8 @@ export class WorkflowRunner {
         env: req.env === undefined ? null : req.env,
         services: req.services,
         credentials: this.deps.credentials,
+        filesRoot: this.deps.filesRoot,
+        instanceSettings: this.deps.instanceSettings,
       });
       try {
         const raw = await raceAbort(() => type.execute!(ctx), signal);

@@ -19,4 +19,6 @@ export interface ExpressionScope {
   /** $execution.resumeUrl / resumeFormUrl (Wait node). */
   resumeUrl?: string;
   resumeFormUrl?: string;
+  /** Values only some parameters can use, e.g. `$response` and `$pageCount` in HTTP Request pagination. */
+  extra?: Record<string, unknown>;
 }

@@ -101,8 +101,16 @@ export class ExpressionEngine {
           hint: 'Check for an endless loop inside the expression.',
         });
       }
-      const message = typeof e?.message === 'string' ? e.message : String(err);
-      throw new ExpressionError(message, { expression: code.trim(), hint: e?.hint ?? hintFor(message) });
+      let message = typeof e?.message === 'string' ? e.message : String(err);
+      let hint = e?.hint;
+      // An error thrown inside a global getter ($env, $response…) comes back re-wrapped as
+      // "Error: <message>" without its hint: use what the bridge reported.
+      const bridged = this.current?.firstError;
+      if (bridged && (message === bridged.message || message === `Error: ${bridged.message}`)) {
+        message = bridged.message;
+        hint ??= bridged.hint;
+      }
+      throw new ExpressionError(message, { expression: code.trim(), hint: hint ?? hintFor(message) });
     } finally {
       this.current = undefined;
     }

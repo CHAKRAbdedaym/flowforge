@@ -56,6 +56,17 @@ execution id immediately, `startNode=<trigger>` picks the trigger. Full details:
 - Ready-made example: **Workflows → Examples → "Contact form → emails"** (the JSON is in [`examples/`](examples)).
 - Check your SMTP settings from the terminal: `npm run check:email` (prints OK or FAIL with the reason).
 
+## Data, files and HTTP nodes
+
+- **HTTP Request**: every method, query / headers / body (JSON, form, multipart, raw, file), authentication through
+  credentials, pagination, redirects, timeouts, file downloads, and **Import cURL**. **GraphQL** for queries with variables.
+- **Data**: Aggregate, Split Out, Remove Duplicates, Summarize, Compare Datasets, Date & Time, Crypto, HTML, XML, Markdown.
+- **Files**: Convert to File, Extract from File, Read/Write Files from Disk. File nodes can only use the
+  `data/files` folder (change it with `FLOWFORGE_FILES_DIR` in `.env`). Files produced by a node show in the
+  **Binary** view of its output, with a download link.
+- **Execute Command** runs shell commands on this computer. It is **disabled by default**: switch it on in
+  **Settings → Security** only if you need it.
+
 ## Open FlowForge from a phone
 
 Forms, webhooks and QR codes use the **public URL** shown at startup (`➜ Network: http://192.168.x.x:5679`).

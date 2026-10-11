@@ -43,7 +43,7 @@
 - [x] P0 Execution timeout + cancel (Ph 1) — test: `engine.test.ts`, `api-engine.test.ts`; manual: endless Code loop timed out at 2 s / stopped
 - [x] P0 Execution queue with concurrency limit, manual runs first (Ph 1) — test: `api-engine.test.ts`
 - [x] P0 Binary data stored on disk + download API with safe headers (Ph 1) — test: `nodes.test.ts`, `api-engine.test.ts`
-- [ ] P0 Binary data preview in the output panel (Ph 2)
+- [x] P0 Binary data preview in the output panel: "Binary" view (name, type, size, image preview, view / download) and a Files column in the table (Ph 2, done in Ph 4) — e2e: `web/e2e/editor-data-network.spec.ts` (download checked byte for byte)
 - [x] P0 Executions persisted with per-node run data + event log (Ph 1) — test: `api-engine.test.ts`; manual: `GET /api/executions`
 - [x] P0 Crash recovery: running executions marked `crashed` on boot (Ph 1) — test: `api-engine.test.ts`
 - [x] P0 Live execution events over WebSocket (`execution.*`, `node.started/finished` with preview, `edge.data`) (Ph 1) — test: `api-engine.test.ts` (order, seq, previews)
@@ -116,28 +116,29 @@
 - [x] P0 Code (sandboxed JS, QuickJS in worker threads; all items / each item; time + memory limits) (Ph 1) — test: `nodes.test.ts` (no require/process/fetch, endless loop, memory bomb, cancel, line numbers). Known gap: Luxon `DateTime` is not available inside Code (QuickJS has no Intl)
 - [x] P2 Limit (Ph 1) — test: `nodes.test.ts`
 - [x] P2 Sort (Ph 1) — test: `nodes.test.ts`
-- [ ] P2 Aggregate (Ph 4)
-- [ ] P2 Split Out (Ph 4)
-- [ ] P2 Remove Duplicates (Ph 4)
-- [ ] P2 Summarize (Ph 4)
-- [ ] P2 Compare Datasets (4 outputs) (Ph 4)
-- [ ] P2 Date & Time (Ph 4)
-- [ ] P2 Crypto (hash, HMAC, random, UUID) (Ph 4)
-- [ ] P2 HTML Extract (CSS selectors) + generate HTML template (Ph 4)
-- [ ] P2 XML ↔ JSON (Ph 4)
-- [ ] P2 Markdown ↔ HTML (Ph 4)
-- [ ] P2 Convert to File (CSV, JSON, text, HTML) (Ph 4)
-- [ ] P2 Extract from File (CSV, JSON, text) (Ph 4)
-- [ ] P2 Read/Write Files from Disk (restricted to `./data/files`) (Ph 4)
-- [ ] P2 Execute Command — **disabled by default**, enabled only via Settings toggle (Ph 4)
+- [x] P2 Aggregate: individual fields (rename, merge lists, keep missing) or all item data (all / some / all except) (Ph 4) — test: `server/tests/data-nodes.test.ts`
+- [x] P2 Split Out: one or several list fields, keep other fields, destination name; missing field per item with On Error (Ph 4) — test: `server/tests/data-nodes.test.ts`
+- [x] P2 Remove Duplicates: all fields / except / selected, ignore case; duplicates on a second output (Ph 4) — test: `server/tests/data-nodes.test.ts`
+- [x] P2 Summarize: sum, average, min, max, count, count unique, append, concatenate; split by fields; separate items or single item (Ph 4) — test: `server/tests/data-nodes.test.ts`; e2e: `editor-data-network.spec.ts`
+- [x] P2 Compare Datasets (2 inputs, 4 outputs): match fields, resolve differences (both / A / B / mix), fuzzy compare, skip fields, all matches (Ph 4) — test: `server/tests/data-nodes.test.ts`
+- [x] P2 Date & Time (Luxon): add / subtract, format (presets, custom, timestamps), time between dates, round, extract part, convert time zone, current date (Ph 4) — test: `server/tests/data-nodes.test.ts` (workflow time zone, many input formats, unreadable dates per item); e2e: form follows the operation
+- [x] P2 Crypto: hash (MD5, SHA…; text or file), HMAC, random string, UUID (Ph 4) — test: `server/tests/data-nodes.test.ts` (known test vectors)
+- [x] P2 HTML: extract with CSS selectors (cheerio: text, HTML, attribute, value, lists; JSON field or file), generate HTML from a template with expressions, convert items to an HTML table (Ph 4) — test: `server/tests/data-nodes.test.ts`
+- [x] P2 XML ↔ JSON (xml2js options: attributes, lists, root, trim…) (Ph 4) — test: `server/tests/data-nodes.test.ts` (round trip, invalid XML)
+- [x] P2 Markdown ↔ HTML (Ph 4) — test: `server/tests/data-nodes.test.ts`
+- [x] P2 Convert to File: CSV (delimiter, header, BOM), JSON (one file or one per item), HTML table, text, Base64 string to file (Ph 4) — test: `server/tests/file-nodes.test.ts`; e2e: CSV content checked
+- [x] P2 Extract from File: CSV (typed values, detected delimiter, no header), JSON, text, file to Base64 (Ph 4) — test: `server/tests/file-nodes.test.ts` (round trip with Convert to File, broken files)
+- [x] P2 Read/Write Files from Disk, restricted to `./data/files`: read one file or a pattern (`*`, `**`, `{a,b}`), write, append; `..`, absolute paths elsewhere and symlinks out of the folder are refused (Ph 4) — test: `server/tests/file-nodes.test.ts`
+- [x] P2 Execute Command — **disabled by default** with a clear error; enabled only by the Settings → Security toggle (confirmation, logged, survives restart); exit code / stdout / stderr, timeout, once or per item (Ph 4) — test: `file-nodes.test.ts`, `server/tests/settings.test.ts`; e2e: `editor-data-network.spec.ts`
 
 ## Network nodes
-- [ ] P0 HTTP Request: all methods, headers, query, body types (JSON, form, multipart, raw, binary) (Ph 4)
-- [ ] P0 HTTP Request: auth none / basic / bearer / API key (header or query) (Ph 4)
-- [ ] P0 HTTP Request: pagination, timeout, full response, response format (Ph 4)
+- [x] P0 HTTP Request: all methods, headers, query, body types (JSON, form, multipart, raw, binary) (Ph 4) — test: `server/tests/http-request.test.ts` (local mock server); manual: GitHub API
+- [x] P0 HTTP Request: auth none / basic / bearer / API key (header or query) through encrypted credentials, with a selector per type on the node; secrets redacted from errors and never stored (Ph 4) — test: `server/tests/http-request.test.ts` (local mock server); e2e: `editor-data-network.spec.ts` (all four types)
+- [x] P0 HTTP Request: pagination (update a parameter with `$pageCount`, next URL from `$response`; stop on empty / status / expression; page limit, interval), timeout, full response, response format (autodetect / JSON / text / file) (Ph 4) — test: `server/tests/http-request.test.ts` (local mock server); e2e: pagination; manual: 100 posts from jsonplaceholder in 5 pages
+- [x] P0 HTTP Request: follow redirects (limit, 303 → GET, credentials not forwarded to another host), ignore SSL issues, never error, retry on fail, cancel, clear errors (status + body + hint, refused, timeout, bad URL) (Ph 4) — test: `server/tests/http-request.test.ts` (local mock server) (incl. self-signed HTTPS server)
 - [x] P0 Respond to Webhook (all items, first item, JSON, text, binary, redirect, no data; status + headers) (Ph 3) — test: `server/tests/webhook.test.ts`
-- [ ] P2 HTTP Request: import cURL (Ph 4)
-- [ ] P2 GraphQL (Ph 4)
+- [x] P2 HTTP Request: import cURL (bash / PowerShell / cmd quoting, headers, JSON / form / multipart / raw bodies, `-G`, `-u`; tokens become a credential) (Ph 4) — unit: `web/tests/curl.test.ts`; e2e: `editor-data-network.spec.ts`
+- [x] P2 GraphQL: query, variables, operation name, POST / GET, headers, same credentials as HTTP Request; GraphQL `errors` fail the node (Ph 4) — test: `server/tests/http-request.test.ts` (local mock server); manual: countries.trevorblades.com
 
 ## Credentials
 - [x] P0 Credentials manager: AES-256-GCM encrypted storage (Ph 3B) — test: `server/tests/credentials.test.ts` (round trip, fresh IV, tampering and wrong key detected, payload bound to its credential id, key file 0600, **raw database bytes contain no credential value**, a key change is reported instead of crashing)
@@ -197,7 +198,7 @@
 - [ ] P2 Executions list with filters + per-node input/output detail (Ph 7)
 - [ ] P2 Retry a failed execution (Ph 7)
 - [ ] P2 Variables (`$vars`) page (Ph 7)
-- [ ] P2 Settings page (timezone, timeout, concurrency, pruning, `$env` access, Execute Command toggle) (Ph 7)
+- [ ] P2 Settings page (timezone, timeout, concurrency, pruning, `$env` access, Execute Command toggle) (Ph 7) — the page exists since Ph 4 with the Execute Command toggle only (`settings.test.ts`, e2e); the other settings come in Ph 7
 - [ ] P2 Templates gallery (Ph 7)
 - [ ] P2 Dashboard with charts (executions per day, success rate, durations, top workflows) (Ph 7)
 

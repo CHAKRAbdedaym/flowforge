@@ -17,7 +17,7 @@ credentials cannot be read and must be typed again. Secrets are never shown agai
 written to executions or logs.
 
 Sections: [Email (SMTP)](#email-smtp) · [Form](#form) · [Webhook authentication](#webhook-authentication)
-· Telegram, Discord, Gemini and weather arrive in Phase 5.
+· [HTTP Request authentication](#http-request-authentication) · Telegram, Discord, Gemini and weather arrive in Phase 5.
 
 ---
 
@@ -156,3 +156,27 @@ create the credential right there (**Credential to connect with → Create new c
 | Header Auth | Header Name (e.g. `X-API-Key`), Header Value | `curl -H "X-API-Key: value" http://…/webhook/path` |
 
 Without the credential the workflow cannot be activated ("Basic Auth credentials are missing").
+
+---
+
+## HTTP Request authentication
+
+The **HTTP Request** and **GraphQL** nodes can sign in to any API. Choose the kind of login in
+**Authentication**, then pick or create the credential right in the node. The secret is stored encrypted and
+is never written into the workflow, the execution data or an error message.
+
+| Authentication | Credential | Fields | What is sent |
+|---|---|---|---|
+| Basic Auth | Basic Auth | User, Password | `Authorization: Basic …` |
+| Bearer Token | Bearer Auth | Bearer Token (without the word "Bearer") | `Authorization: Bearer <token>` |
+| API Key in a Header | Header Auth | Header Name (e.g. `X-API-Key`), Header Value | `<name>: <value>` |
+| API Key in the URL | Query Auth | Parameter Name (e.g. `api_key`), Value | `?<name>=<value>` |
+
+Tips:
+
+- **Import cURL**: paste a command from API docs. A token or `-u user:password` found in it is saved as a
+  credential (untick the box in the dialog to keep it as a plain header instead).
+- A `401` answer with a credential shows **Open Credentials** in the error, to fix the value on the spot.
+- No key at hand? These public APIs need none: `https://api.github.com/repos/n8n-io/n8n` (JSON),
+  `https://countries.trevorblades.com/` (GraphQL).
+

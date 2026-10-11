@@ -3,7 +3,7 @@ import { defineCredential } from './types.js';
 export default defineCredential({
   name: 'httpBasicAuth',
   displayName: 'Basic Auth',
-  description: 'User and password (HTTP Basic authentication), e.g. to protect a Webhook.',
+  description: 'User and password (HTTP Basic authentication): protects a Webhook, or signs in to an API (HTTP Request).',
   icon: 'lock',
   docsAnchor: '#webhook-authentication',
   properties: [

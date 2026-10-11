@@ -1,10 +1,12 @@
 import type { CredentialTypeInfo, CredentialValue } from '@flowforge/shared';
 import httpBasicAuth from './http-basic-auth.credential.js';
+import httpBearerAuth from './http-bearer-auth.credential.js';
 import httpHeaderAuth from './http-header-auth.credential.js';
+import httpQueryAuth from './http-query-auth.credential.js';
 import smtp from './smtp.credential.js';
 import type { CredentialData, CredentialType } from './types.js';
 
-const TYPES: CredentialType[] = [smtp, httpBasicAuth, httpHeaderAuth];
+const TYPES: CredentialType[] = [smtp, httpBasicAuth, httpBearerAuth, httpHeaderAuth, httpQueryAuth];
 
 export class CredentialTypeRegistry {
   private readonly types = new Map<string, CredentialType>();

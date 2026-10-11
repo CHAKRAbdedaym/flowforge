@@ -9,6 +9,11 @@ import type { ExpressionScope } from './scope.js';
 export interface EvalState {
   scope: ExpressionScope;
   itemIndex: number;
+  /**
+   * First error reported through the bridge in this evaluation. Node calls the getter of a sandbox global
+   * twice when it throws, and the second call only sees a re-wrapped copy ("Error: …", no hint).
+   */
+  firstError?: { message: string; hint?: string };
 }
 
 const HASHES = new Set(getHashes());
@@ -112,6 +117,15 @@ function handle(op: string, args: unknown[], { scope, itemIndex }: EvalState): u
       return scope.variables;
     case 'tz':
       return scope.timezone;
+    case 'extra': {
+      const name = String(args[0]);
+      if (!scope.extra || !(name in scope.extra)) {
+        throw new ExpressionError(`${name} is not available here`, {
+          hint: 'It only exists in the pagination settings of the HTTP Request node, while the node runs.',
+        });
+      }
+      return scope.extra[name];
+    }
     case 'jmespath':
       if (typeof args[1] !== 'string') throw new ExpressionError('$jmespath(data, "query") needs a query string');
       return jmespath.search(args[0] as never, args[1]);
@@ -140,6 +154,8 @@ export function createBridge(getState: () => EvalState | undefined): Bridge {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const hint = err instanceof FlowError ? err.hint : undefined;
+      const state = getState();
+      if (state && !state.firstError) state.firstError = { message, hint };
       return JSON.stringify({ e: message, h: hint });
     }
   };

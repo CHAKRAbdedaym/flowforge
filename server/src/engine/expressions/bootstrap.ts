@@ -88,6 +88,9 @@ export const BOOTSTRAP_SOURCE = String.raw`
   defineGetter('$execution', () => call('execution', []));
   defineGetter('$env', () => call('env', []));
   defineGetter('$vars', () => call('vars', []));
+  // HTTP Request pagination: the previous response and the number of requests made so far.
+  defineGetter('$response', () => call('extra', ['$response']));
+  defineGetter('$pageCount', () => call('extra', ['$pageCount']));
   defineGetter('$now', () => DateTime.now().setZone(call('tz', [])));
   defineGetter('$today', () => DateTime.now().setZone(call('tz', [])).startOf('day'));
   defineGlobal('DateTime', DateTime);

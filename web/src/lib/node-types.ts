@@ -80,7 +80,7 @@ export const GROUP_LABELS: Record<string, string> = {
   trigger: 'Triggers',
   flow: 'Flow',
   transform: 'Data transformation',
-  files: 'Files',
+  files: 'Files & system',
   network: 'Network',
   integration: 'Integrations',
   ai: 'AI',

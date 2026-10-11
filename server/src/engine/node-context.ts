@@ -35,6 +35,8 @@ export interface NodeContextOptions {
   env: Record<string, string> | null;
   services?: ExecutionServices;
   credentials?: CredentialsProvider;
+  filesRoot?: string;
+  instanceSettings?: { get(key: string): unknown };
 }
 
 export class NodeExecutionContext implements ExecuteContext {
@@ -117,8 +119,8 @@ export class NodeExecutionContext implements ExecuteContext {
     }
   }
 
-  evaluateExpression(expression: string, itemIndex: number): unknown {
-    return this.o.expressions.evaluate(expression, this.scope, itemIndex);
+  evaluateExpression(expression: string, itemIndex: number, extra?: Record<string, unknown>): unknown {
+    return this.o.expressions.evaluate(expression, extra ? { ...this.scope, extra } : this.scope, itemIndex);
   }
 
   continueOnFail(): boolean {
@@ -196,6 +198,15 @@ export class NodeExecutionContext implements ExecuteContext {
 
   getResumeUrls(): { webhook: string; form: string } {
     return this.o.services?.resumeUrls ?? { webhook: '', form: '' };
+  }
+
+  getFilesRoot(): string {
+    if (!this.o.filesRoot) throw new NodeOperationError('File access is not available in this run', { hint: 'Run the workflow from the editor or a trigger.' });
+    return this.o.filesRoot;
+  }
+
+  getInstanceSetting(key: string): unknown {
+    return this.o.instanceSettings?.get(key);
   }
 
   async getCredentials(type: string): Promise<ResolvedCredential> {

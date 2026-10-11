@@ -50,6 +50,5 @@ export const SETTINGS_NAV: NavItem = {
   to: '/settings',
   label: 'Settings',
   icon: Settings,
-  phase: '7',
   description: 'Timezone, execution timeout, concurrency, data pruning and security toggles.',
 };

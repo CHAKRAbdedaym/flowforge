@@ -5,13 +5,14 @@ import type { AuthStatus } from '@flowforge/shared';
 import { FullScreenLoader } from '../components/FullScreen';
 import { Toaster } from '../components/Toaster';
 import { AppLayout } from '../layout/AppLayout';
-import { MAIN_NAV, SETTINGS_NAV } from '../layout/nav';
+import { MAIN_NAV } from '../layout/nav';
 import { ApiError } from '../lib/api';
 import { AUTH_STATUS_KEY } from '../lib/auth';
 import { CredentialsPage } from '../pages/CredentialsPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { OverviewPage } from '../pages/OverviewPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
+import { SettingsPage } from '../pages/SettingsPage';
 import { SetupPage } from '../pages/SetupPage';
 import { SignInPage } from '../pages/SignInPage';
 import { WorkflowsPage } from '../pages/WorkflowsPage';
@@ -33,7 +34,7 @@ const queryClient = new QueryClient({
 // The editor (canvas, CodeMirror, all node icons) is loaded only when a workflow is opened.
 const EditorPage = lazy(() => import('../editor/EditorPage').then((m) => ({ default: m.EditorPage })));
 
-const placeholderPages = [...MAIN_NAV.filter((item) => item.phase), SETTINGS_NAV];
+const placeholderPages = MAIN_NAV.filter((item) => item.phase);
 
 // A data router is needed for useBlocker (unsaved-changes warning in the editor).
 const router = createBrowserRouter([
@@ -73,6 +74,7 @@ const router = createBrowserRouter([
       { path: 'home', element: <RequireAuth>{(user) => <OverviewPage user={user} />}</RequireAuth> },
       { path: 'workflows', element: <WorkflowsPage /> },
       { path: 'credentials', element: <CredentialsPage /> },
+      { path: 'settings', element: <SettingsPage /> },
       ...placeholderPages.map((item) => ({ path: item.to.slice(1), element: <PlaceholderPage item={item} /> })),
       { path: '*', element: <NotFoundPage /> },
     ],
