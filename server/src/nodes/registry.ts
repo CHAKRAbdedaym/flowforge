@@ -58,7 +58,17 @@ const DescriptionSchema = z.object({
   inputs: z.array(ConnectionSpecSchema),
   outputs: z.array(ConnectionSpecSchema),
   dynamicOutputs: z.boolean().optional(),
-  credentials: z.array(z.object({ type: z.string(), required: z.boolean().optional() })).optional(),
+  credentials: z
+    .array(
+      z.object({
+        type: z.string(),
+        required: z.boolean().optional(),
+        displayOptions: z
+          .object({ show: z.record(z.string(), z.array(z.unknown())).optional(), hide: z.record(z.string(), z.array(z.unknown())).optional() })
+          .optional(),
+      }),
+    )
+    .optional(),
   trigger: z.object({ kind: z.enum(['manual', 'webhook', 'schedule', 'poll', 'listener', 'event']) }).optional(),
   keywords: z.array(z.string()).optional(),
   docsUrl: z.string().optional(),

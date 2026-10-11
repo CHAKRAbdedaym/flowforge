@@ -156,6 +156,8 @@ export interface SerializedError {
   expression?: string;
   /** For missing/invalid credentials: lets the UI offer "Open Credentials". */
   credentialType?: string;
+  /** Saved credential that failed (e.g. wrong password): the UI opens it for editing. */
+  credentialId?: string;
   envVar?: string;
   docsAnchor?: string;
 }

@@ -210,21 +210,65 @@ describe('response modes', () => {
   });
 });
 
-describe('authentication', () => {
-  it('basic auth: missing 401, wrong 403, right 200', async () => {
-    await webhookWorkflow({ authentication: 'basicAuth', basicAuthUser: 'ada', basicAuthPassword: 's3cret' });
+describe('authentication (credentials)', () => {
+  it('basic auth: activation needs the credential; then missing 401, wrong 403, right 200', async () => {
+    const nodes = [node('Webhook', 'webhook', { path: 'hello', authentication: 'basicAuth' })];
+    const id = await createWorkflow(agent, { name: 'Locked', nodes, connections: {} });
+    const refused = await activate(agent, id);
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.message).toBe('Webhook: Basic Auth credentials are missing');
+
+    const created = await agent.post('/api/credentials').send({ name: 'Hook login', type: 'httpBasicAuth', data: { user: 'ada', password: 's3cret' } });
+    expect(created.status).toBe(201);
+    expect(JSON.stringify(created.body)).not.toContain('s3cret');
+    expect((await activate(agent, id)).status).toBe(200);
+
     const missing = await request(t.app).get('/webhook/hello');
     expect(missing.status).toBe(401);
     expect(missing.headers['www-authenticate']).toMatch(/Basic/);
     expect((await request(t.app).get('/webhook/hello').auth('ada', 'nope')).status).toBe(403);
-    expect((await request(t.app).get('/webhook/hello').auth('ada', 's3cret')).status).toBe(200);
+    expect((await request(t.app).get('/webhook/hello').auth('ada', 's3cret').set('X-Trace', 'kept')).status).toBe(200);
+    // The Authorization header that was checked is not stored with the execution; other headers are.
+    const done = await finished(t, executions(t, id)[0]!.id);
+    expect(output(done, 'Webhook')[0]!.headers).toMatchObject({ authorization: '**hidden**', 'x-trace': 'kept' });
+    expect(JSON.stringify(done)).not.toContain(Buffer.from('ada:s3cret').toString('base64'));
   });
 
-  it('header auth', async () => {
-    await webhookWorkflow({ authentication: 'headerAuth', headerAuthName: 'X-Api-Key', headerAuthValue: 'k-123' });
+  it('header auth uses the credential selected on the node', async () => {
+    const other = await agent.post('/api/credentials').send({ name: 'Default key', type: 'httpHeaderAuth', data: { name: 'X-Api-Key', value: 'default' } });
+    const chosen = await agent.post('/api/credentials').send({ name: 'Partner key', type: 'httpHeaderAuth', data: { name: 'X-Api-Key', value: 'k-123' } });
+    expect(other.body.isDefault).toBe(true);
+    expect(chosen.body.isDefault).toBe(false);
+    const nodes = [{ ...node('Webhook', 'webhook', { path: 'hello', authentication: 'headerAuth' }), credentials: { httpHeaderAuth: { id: chosen.body.id, name: 'Partner key' } } }];
+    const id = await createWorkflow(agent, { name: 'Header', nodes, connections: {} });
+    expect((await activate(agent, id)).status).toBe(200);
     expect((await request(t.app).get('/webhook/hello')).status).toBe(401);
-    expect((await request(t.app).get('/webhook/hello').set('X-Api-Key', 'bad')).status).toBe(403);
-    expect((await request(t.app).get('/webhook/hello').set('X-Api-Key', 'k-123')).status).toBe(200);
+    expect((await request(t.app).get('/webhook/hello').set('X-Api-Key', 'default')).status).toBe(403);
+    expect((await request(t.app).get('/webhook/hello').set('X-Api-Key', 'k-123').set('Authorization', 'Bearer app-data')).status).toBe(200);
+    const done = await finished(t, executions(t, id)[0]!.id);
+    // Only the header used for authentication is hidden: an Authorization header is ordinary data here.
+    expect(output(done, 'Webhook')[0]!.headers).toMatchObject({ 'x-api-key': '**hidden**', authorization: 'Bearer app-data' });
+    expect(JSON.stringify(done)).not.toContain('k-123');
+  });
+
+  it('the session cookie of a signed-in caller never reaches the workflow', async () => {
+    const id = await webhookWorkflow({});
+    // The owner tries the webhook from the browser they are signed in with.
+    const res = await agent.get('/webhook/hello').set('Cookie', 'theme=dark');
+    expect(res.status).toBe(200);
+    const headers = output(await finished(t, executions(t, id)[0]!.id), 'Webhook')[0]!.headers as Record<string, string>;
+    expect(headers.cookie).toBe('theme=dark');
+    expect(JSON.stringify(headers)).not.toContain('ff_session');
+    // Only the session cookie: nothing is left of the header.
+    await request(t.app).get('/webhook/hello').set('Cookie', 'ff_session=abc123');
+    const second = output(await finished(t, executions(t, id)[0]!.id), 'Webhook')[0]!.headers as Record<string, string>;
+    expect(second.cookie).toBeUndefined();
+  });
+
+  it('without authentication every header is passed to the workflow', async () => {
+    const id = await webhookWorkflow({});
+    await request(t.app).get('/webhook/hello').set('Authorization', 'Bearer my-own-check');
+    expect(output(await finished(t, executions(t, id)[0]!.id), 'Webhook')[0]!.headers).toMatchObject({ authorization: 'Bearer my-own-check' });
   });
 });
 

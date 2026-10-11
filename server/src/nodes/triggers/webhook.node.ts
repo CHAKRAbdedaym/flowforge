@@ -5,6 +5,7 @@ import { getPath } from '../../engine/params.js';
 import { defineNode, type WebhookHandleResult, type WebhookResponseMode } from '../../engine/types.js';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
+const HIDDEN = '**hidden**';
 
 const same = (a: string, b: string) => {
   const x = Buffer.from(a);
@@ -46,6 +47,10 @@ export default defineNode({
     outputs: [{ type: 'main' }],
     trigger: { kind: 'webhook' },
     keywords: ['http', 'api', 'endpoint', 'url', 'callback', 'rest'],
+    credentials: [
+      { type: 'httpBasicAuth', required: true, displayOptions: { show: { authentication: ['basicAuth'] } } },
+      { type: 'httpHeaderAuth', required: true, displayOptions: { show: { authentication: ['headerAuth'] } } },
+    ],
   },
   properties: [
     { name: 'webhookUrls', displayName: 'Webhook URLs', type: 'webhookUrls', default: '', typeOptions: { urlPrefix: 'webhook' } },
@@ -72,29 +77,9 @@ export default defineNode({
       default: 'none',
       options: [
         { name: 'None', value: 'none' },
-        { name: 'Basic Auth', value: 'basicAuth' },
-        { name: 'Header Auth', value: 'headerAuth' },
+        { name: 'Basic Auth', value: 'basicAuth', description: 'User and password, stored as a Basic Auth credential' },
+        { name: 'Header Auth', value: 'headerAuth', description: 'Secret header, stored as a Header Auth credential' },
       ],
-    },
-    { name: 'basicAuthUser', displayName: 'User', type: 'string', default: '', displayOptions: { show: { authentication: ['basicAuth'] } }, noDataExpression: true },
-    {
-      name: 'basicAuthPassword',
-      displayName: 'Password',
-      type: 'string',
-      default: '',
-      typeOptions: { password: true },
-      displayOptions: { show: { authentication: ['basicAuth'] } },
-      noDataExpression: true,
-    },
-    { name: 'headerAuthName', displayName: 'Header Name', type: 'string', default: 'X-API-Key', displayOptions: { show: { authentication: ['headerAuth'] } }, noDataExpression: true },
-    {
-      name: 'headerAuthValue',
-      displayName: 'Header Value',
-      type: 'string',
-      default: '',
-      typeOptions: { password: true },
-      displayOptions: { show: { authentication: ['headerAuth'] } },
-      noDataExpression: true,
     },
     {
       name: 'responseMode',
@@ -150,20 +135,26 @@ export default defineNode({
       return { methods: [method], path: String(params.path || node.webhookId || node.id) };
     },
     cors: (params) => String(getPath(params, 'options.allowedOrigins') ?? '*') || undefined,
-    async handle({ request, parameters: p, storeBinary }): Promise<WebhookHandleResult> {
+    async handle({ request, parameters: p, storeBinary, getCredentials }): Promise<WebhookHandleResult> {
       const auth = String(p.authentication ?? 'none');
+      // The header that proved who is calling is a secret: it never goes into the node output.
+      let secretHeader: string | undefined;
       if (auth === 'basicAuth') {
+        secretHeader = 'authorization';
+        const { data } = getCredentials('httpBasicAuth');
         const header = request.headers.authorization ?? '';
         if (!header.startsWith('Basic ')) {
           return { response: { statusCode: 401, headers: { 'WWW-Authenticate': 'Basic realm="Webhook"' }, body: { message: 'Authorization is required!' } } };
         }
         const [user, ...rest] = Buffer.from(header.slice(6), 'base64').toString('utf8').split(':');
-        if (!same(user ?? '', String(p.basicAuthUser ?? '')) || !same(rest.join(':'), String(p.basicAuthPassword ?? ''))) {
+        if (!same(user ?? '', String(data.user ?? '')) || !same(rest.join(':'), String(data.password ?? ''))) {
           return { response: { statusCode: 403, body: { message: 'Authorization data is wrong!' } } };
         }
       } else if (auth === 'headerAuth') {
-        const name = String(p.headerAuthName ?? '').toLowerCase();
-        const expected = String(p.headerAuthValue ?? '');
+        const { data } = getCredentials('httpHeaderAuth');
+        const name = String(data.name ?? '').toLowerCase();
+        secretHeader = name;
+        const expected = String(data.value ?? '');
         const given = request.headers[name];
         if (!given) return { response: { statusCode: 401, body: { message: 'Authorization is required!' } } };
         if (!expected || !same(given, expected)) return { response: { statusCode: 403, body: { message: 'Authorization data is wrong!' } } };
@@ -182,7 +173,7 @@ export default defineNode({
       }
       const item: Item = {
         json: {
-          headers: request.headers,
+          headers: secretHeader && secretHeader in request.headers ? { ...request.headers, [secretHeader]: HIDDEN } : request.headers,
           params: request.params,
           query: request.query,
           body: request.body as JsonObject[string],

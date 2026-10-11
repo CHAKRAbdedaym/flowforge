@@ -9,10 +9,12 @@ import {
   type NodeProperty,
 } from '@flowforge/shared';
 import { cn } from '../../components/ui/cn';
+import { Toggle } from '../../components/ui/Toggle';
 import { CodeMirror } from './CodeMirror';
 import { codeExtensions } from './cm';
 import { isGroupList, isOptionList, isPropertyList, isVisible, setIn, withDefaults, type Values } from './display';
 import { Field, inputClass, readDropped, type FixedKind } from './Field';
+import { FormBuilder } from './FormBuilder';
 import { WebhookUrls, WorkflowSelector } from './SpecialInputs';
 
 interface ListProps {
@@ -31,7 +33,7 @@ export function ParameterList({ properties, values, root, onChange, testPrefix }
   return (
     <div className="flex flex-col gap-4">
       {properties
-        .filter((p) => isVisible(p, level, root))
+        .filter((p) => !p.typeOptions?.editorHidden && isVisible(p, level, root))
         .map((p) => (
           <ParameterInput
             key={p.name}
@@ -168,6 +170,8 @@ export function ParameterInput({ property: p, value, root, onChange, testId, com
       );
     case 'webhookUrls':
       return <WebhookUrls property={p} />;
+    case 'formFields':
+      return <FormBuilder value={value} root={root} onChange={onChange} testId={testId} displayName={p.displayName} />;
     case 'workflowSelector':
       return field(<WorkflowSelector value={value} onChange={onChange} testId={testId} />);
     case 'notice':
@@ -209,20 +213,7 @@ function Section({ title, children, testId }: { title: string; children: ReactNo
   );
 }
 
-export function Toggle({ checked, onChange, testId }: { checked: boolean; onChange(v: boolean): void; testId?: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      data-testid={testId}
-      onClick={() => onChange(!checked)}
-      className={cn('relative h-5 w-9 rounded-full transition-colors', checked ? 'bg-accent' : 'bg-line-strong')}
-    >
-      <span className={cn('absolute top-0.5 size-4 rounded-full bg-white transition-all', checked ? 'left-[18px]' : 'left-0.5')} />
-    </button>
-  );
-}
+export { Toggle };
 
 function JsonEditor({ value, onChange, testId }: { value: unknown; onChange(v: unknown): void; testId: string }) {
   const text = typeof value === 'string' ? value : JSON.stringify(value ?? null, null, 2);

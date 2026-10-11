@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy, Play, Radio, Square } from 'lucide-react';
+import { ExternalLink, Play, QrCode, Radio, Square } from 'lucide-react';
 import type { NodeTypeInfo } from '@flowforge/shared';
+import { CopyButton } from '../../components/CopyButton';
+import { QrDialog, qrSrc } from '../../components/QrDialog';
 import { Button } from '../../components/ui/Button';
 import { listenForTestEvent, stopListening } from '../actions';
 import { useEditor } from '../store';
@@ -16,25 +18,53 @@ function Countdown({ until }: { until: string }) {
 }
 
 export function CopyText({ text, testId }: { text: string; testId?: string }) {
-  const [copied, setCopied] = useState(false);
   return (
     <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-line bg-panel-2 px-2 py-1.5">
       <code className="min-w-0 flex-1 truncate font-mono text-[12px]" data-testid={testId} title={text}>
         {text}
       </code>
-      <button
-        type="button"
-        title="Copy"
-        onClick={() =>
-          void navigator.clipboard?.writeText(text).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          })
-        }
-        className="rounded p-1 text-subtle hover:bg-panel-3 hover:text-fg"
-      >
-        {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
+      <CopyButton text={text} />
+    </div>
+  );
+}
+
+/** Path part of a URL: links opened from the editor stay on the address the editor itself uses. */
+export const sameOriginPath = (url: string) => {
+  try {
+    const u = new URL(url);
+    return `${u.pathname}${u.search}`;
+  } catch {
+    return url;
+  }
+};
+
+/** Listening on a test form: open it here, or scan the QR code with a phone. */
+function TestFormLinks({ url }: { url: string }) {
+  const [qr, setQr] = useState(false);
+  return (
+    <div className="flex w-full max-w-md flex-col items-center gap-3" data-testid="test-form-links">
+      <span className="text-[12.5px] text-muted">Fill in the test form: the workflow runs with your answers.</span>
+      <button type="button" onClick={() => setQr(true)} title="Show a large QR code" className="rounded-xl bg-white p-2 shadow-lg transition-transform hover:scale-[1.03]" data-testid="test-form-qr">
+        <img src={qrSrc(url, 360)} alt="QR code of the test form" width={150} height={150} className="block size-[150px]" />
       </button>
+      <div className="w-full text-left">
+        <CopyText text={url} testId="test-url" />
+      </div>
+      <div className="flex gap-2">
+        <a
+          href={sameOriginPath(url)}
+          target="_blank"
+          rel="noreferrer"
+          data-testid="open-test-form"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-white hover:bg-accent-hover"
+        >
+          <ExternalLink size={14} /> Open test form
+        </a>
+        <Button size="sm" variant="secondary" icon={<QrCode size={14} />} onClick={() => setQr(true)}>
+          QR code
+        </Button>
+      </div>
+      {qr && <QrDialog url={url} title="Test form" openHref={sameOriginPath(url)} fileName="test-form-qr" note="The test URL works for one submission while the editor is listening." onClose={() => setQr(false)} />}
     </div>
   );
 }
@@ -49,7 +79,9 @@ export function TriggerPanel({ nodeName, type }: { nodeName: string; type: NodeT
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center" data-testid="trigger-listening">
         <Radio size={28} className="animate-pulse text-accent-hover" />
         <div className="text-[14px] font-medium">Listening for a test event…</div>
-        {listening.testUrl ? (
+        {listening.testUrl && /\/form-test\//.test(listening.testUrl) ? (
+          <TestFormLinks url={listening.testUrl} />
+        ) : listening.testUrl ? (
           <div className="flex w-full max-w-md flex-col gap-1.5 text-left">
             <span className="text-[12px] text-subtle">Call this URL ({listening.method}) — it works once:</span>
             <CopyText text={listening.testUrl} testId="test-url" />
@@ -76,7 +108,9 @@ export function TriggerPanel({ nodeName, type }: { nodeName: string; type: NodeT
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-[12.5px] text-subtle">
       {listens
-        ? 'Start listening, then trigger the event (call the URL, add a file…). The workflow runs once with that data.'
+        ? type.type === 'flowforge.formTrigger'
+          ? 'Start listening, then open the test form (a QR code for your phone appears here) and submit it.'
+          : 'Start listening, then trigger the event (call the URL, add a file…). The workflow runs once with that data.'
         : kind === 'poll'
           ? 'Fetch the newest item now to see what this trigger outputs.'
           : 'Run this trigger now to see what it outputs.'}

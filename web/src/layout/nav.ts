@@ -35,7 +35,6 @@ export const MAIN_NAV: NavItem[] = [
     to: '/credentials',
     label: 'Credentials',
     icon: KeyRound,
-    phase: '3B',
     description: 'Encrypted API keys and logins for SMTP, Telegram, Discord and Gemini, with a Test button.',
   },
   {

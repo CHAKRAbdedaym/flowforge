@@ -7,10 +7,13 @@ import { iconFor, isTriggerType, staticOutputs } from '../../lib/node-types';
 import { toast } from '../../lib/toast';
 import { executeStep } from '../actions';
 import { NodeEditCtx, type NodeEditContext } from '../params/context';
+import { isVisible, withDefaults } from '../params/display';
 import { ParameterList } from '../params/ParameterList';
 import { editor, isRunning, useEditor } from '../store';
 import { inputFor, nodeSamples } from './data';
 import { InputPanel, OutputPanel } from './DataPanel';
+import { FormPreview } from './FormPreview';
+import { NodeCredentials } from './NodeCredentials';
 import { NodeSettings } from './NodeSettings';
 import { TriggerPanel } from './TriggerPanel';
 
@@ -61,7 +64,14 @@ export function NodeDetailsView({ types }: { types: Map<string, NodeTypeInfo> })
   const running = useEditor((s) => isRunning(s.execution.status));
   const [tab, setTab] = useState<'parameters' | 'settings'>('parameters');
   const [inputIndex, setInputIndex] = useState(0);
+  const [leftTab, setLeftTab] = useState<'input' | 'form'>('input');
   const type = node ? types.get(node.type) : undefined;
+  // Nodes with a visible form builder (Form Trigger, Wait "On Form Submitted") get a live preview next to it.
+  const defaults = useMemo(() => (type ? withDefaults(type.properties, {}) : {}), [type]);
+  const hasForm = Boolean(
+    node && type?.properties.some((p) => p.type === 'formFields' && isVisible(p, withDefaults(type.properties, node.parameters), node.parameters)),
+  );
+  useEffect(() => setLeftTab(hasForm ? 'form' : 'input'), [hasForm, openNode]);
 
   useEffect(() => {
     setTab('parameters');
@@ -123,10 +133,34 @@ export function NodeDetailsView({ types }: { types: Map<string, NodeTypeInfo> })
           <div className="p-6 text-danger">Unknown node type "{node.type}". The node cannot be edited in this version of FlowForge.</div>
         ) : (
           <NodeEditCtx.Provider value={context}>
-            <div className={cn('grid min-h-0 flex-1', isTrigger ? 'grid-cols-[1.2fr_1fr]' : 'grid-cols-[1fr_1.15fr_1fr]')}>
+            <div className={cn('grid min-h-0 flex-1', isTrigger && !hasForm ? 'grid-cols-[1.2fr_1fr]' : 'grid-cols-[1fr_1.15fr_1fr]')}>
+              {isTrigger && hasForm && (
+                <div className="flex min-h-0 flex-col border-r border-line">
+                  <FormPreview parameters={node.parameters} defaults={defaults} />
+                </div>
+              )}
               {!isTrigger && (
                 <div className="flex min-h-0 flex-col border-r border-line">
-                  <InputPanel items={input.items} fromNode={input.fromNode} inputLabels={inputLabels} inputIndex={inputIndex} onInputIndex={setInputIndex} />
+                  {hasForm && (
+                    <div className="flex gap-1 border-b border-line px-3 pt-2">
+                      {(['form', 'input'] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          data-testid={`ndv-left-${t}`}
+                          onClick={() => setLeftTab(t)}
+                          className={cn('-mb-px border-b-2 px-2 pb-2 text-[13px]', leftTab === t ? 'border-accent text-fg' : 'border-transparent text-subtle hover:text-fg')}
+                        >
+                          {t === 'form' ? 'Form preview' : 'Input'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {hasForm && leftTab === 'form' ? (
+                    <FormPreview parameters={node.parameters} defaults={defaults} />
+                  ) : (
+                    <InputPanel items={input.items} fromNode={input.fromNode} inputLabels={inputLabels} inputIndex={inputIndex} onInputIndex={setInputIndex} />
+                  )}
                 </div>
               )}
               <section className="flex min-h-0 flex-col border-r border-line bg-panel-2/30" data-testid="parameters-panel">
@@ -147,6 +181,7 @@ export function NodeDetailsView({ types }: { types: Map<string, NodeTypeInfo> })
                   {node.notes && tab === 'parameters' && (
                     <div className="mb-4 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-[12.5px] text-[#ffd99b]">{node.notes}</div>
                   )}
+                  {tab === 'parameters' && <NodeCredentials node={node} type={type} />}
                   {tab === 'parameters' ? (
                     type.properties.length ? (
                       <ParameterList

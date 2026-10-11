@@ -44,15 +44,33 @@ export class WaitSignal extends Error {
   }
 }
 
-/** A node needs credentials that are not configured (the UI then offers "Open Credentials"). */
-export class MissingCredentialError extends NodeOperationError {
+/** A credential problem (missing, wrong password…): the UI offers "Open Credentials". */
+export class CredentialError extends NodeOperationError {
+  readonly credentialType: string;
+  /** Saved credential that was used (absent when the values came from .env). */
+  readonly credentialId?: string;
+  readonly envVar?: string;
+  readonly docsAnchor?: string;
+
   constructor(
-    readonly credentialType: string,
-    readonly displayName: string,
-    readonly envVar?: string,
-    readonly docsAnchor?: string,
+    message: string,
+    options: ConstructorParameters<typeof FlowError>[1] & { credentialType: string; credentialId?: string; envVar?: string; docsAnchor?: string },
   ) {
+    super(message, options);
+    this.credentialType = options.credentialType;
+    this.credentialId = options.credentialId;
+    this.envVar = options.envVar;
+    this.docsAnchor = options.docsAnchor;
+  }
+}
+
+/** A node needs credentials that are not configured. */
+export class MissingCredentialError extends CredentialError {
+  constructor(credentialType: string, displayName: string, envVar?: string, docsAnchor?: string) {
     super(`${displayName} credentials are missing`, {
+      credentialType,
+      envVar,
+      docsAnchor,
       hint: `Add them on the Credentials page${envVar ? ` or set ${envVar} in .env` : ''}${docsAnchor ? ` (see API_SETUP.md${docsAnchor})` : ''}.`,
     });
   }
@@ -68,8 +86,9 @@ export function serializeError(err: unknown, node?: string): SerializedError {
     if (err.node ?? node) out.node = err.node ?? node;
     if (err.itemIndex !== undefined) out.itemIndex = err.itemIndex;
     if (err instanceof ExpressionError && err.expression) out.expression = err.expression;
-    if (err instanceof MissingCredentialError) {
+    if (err instanceof CredentialError) {
       out.credentialType = err.credentialType;
+      if (err.credentialId) out.credentialId = err.credentialId;
       if (err.envVar) out.envVar = err.envVar;
       if (err.docsAnchor) out.docsAnchor = err.docsAnchor;
     }

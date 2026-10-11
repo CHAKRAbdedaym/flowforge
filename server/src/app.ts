@@ -3,6 +3,7 @@ import { createServer, type Server } from 'node:http';
 import express, { type Express } from 'express';
 import { apiRouter } from './api/index.js';
 import type { AppContext } from './context.js';
+import { migrateLegacyWebhookAuth } from './credentials/legacy-webhook-auth.js';
 import { ExecutionService } from './engine/execution-service.js';
 import { getExpressionEngine } from './engine/expressions/engine.js';
 import { WorkflowRunner } from './engine/runner.js';
@@ -49,6 +50,7 @@ export function createApp(ctx: AppContext): FlowForgeApp {
     binaryStore: ctx.binaryStore,
     logger,
     defaults: { timeoutMs: config.executionTimeoutMs, maxNodeRuns: config.maxNodeRuns, timezone: config.timezone },
+    credentials: ctx.credentials,
   });
   const executions = new ExecutionService({
     repo: ctx.executionsRepo,
@@ -73,6 +75,7 @@ export function createApp(ctx: AppContext): FlowForgeApp {
     publicUrl: config.publicUrl,
     timezone: config.timezone,
     filesRoot: config.filesRoot,
+    credentials: ctx.credentials,
   });
   const webhooks = new WebhookService({
     registry: webhookRegistry,
@@ -83,7 +86,9 @@ export function createApp(ctx: AppContext): FlowForgeApp {
     logger,
     publicUrl: config.publicUrl,
     maxBodyBytes: config.webhookMaxBodyBytes,
+    formMaxBodyBytes: config.formMaxBodyBytes,
     timezone: config.timezone,
+    credentials: ctx.credentials,
     onTestReceived: (reg, executionId) => testListeners.received(reg.workflowId, reg.nodeName, executionId),
   });
   const activeWorkflows = new ActiveWorkflowManager({
@@ -95,6 +100,7 @@ export function createApp(ctx: AppContext): FlowForgeApp {
     ws,
     timezone: config.timezone,
     filesRoot: config.filesRoot,
+    credentials: ctx.credentials,
   });
   const waitTracker = new WaitTracker({ repo: ctx.executionsRepo, executions, logger });
   executions.onWaiting = (id, till) => waitTracker.schedule(id, till);
@@ -113,7 +119,10 @@ export function createApp(ctx: AppContext): FlowForgeApp {
       executionsRepo: ctx.executionsRepo,
       nodes: ctx.registry,
       logger,
+      binaryStore: ctx.binaryStore,
       ratePerMinute: config.webhookRatePerMinute,
+      formRatePerMinute: config.formRatePerMinute,
+      formMaxBodyBytes: config.formMaxBodyBytes,
     }),
   );
   app.use(staticFrontend(config.webDistDir));
@@ -137,6 +146,11 @@ export function createApp(ctx: AppContext): FlowForgeApp {
     async boot() {
       const crashed = ctx.executionsRepo.markUnfinishedAsCrashed();
       if (crashed) logger.warn(`${crashed} execution(s) were interrupted by the last shutdown and are marked as crashed`);
+      try {
+        migrateLegacyWebhookAuth(ctx.db, ctx.credentials, logger);
+      } catch (err) {
+        logger.error('Could not move old Webhook passwords to credentials', err);
+      }
       await activeWorkflows.init();
       waitTracker.init();
     },

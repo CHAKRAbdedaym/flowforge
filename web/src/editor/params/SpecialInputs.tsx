@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, QrCode } from 'lucide-react';
 import type { NodeProperty, SystemInfo } from '@flowforge/shared';
+import { QrDialog, qrSrc, ReachHint } from '../../components/QrDialog';
 import { cn } from '../../components/ui/cn';
 import { api } from '../../lib/api';
 import { useWorkflows } from '../../lib/workflows-api';
-import { CopyText } from '../ndv/TriggerPanel';
+import { CopyText, sameOriginPath } from '../ndv/TriggerPanel';
 import { useEditor } from '../store';
 import { useNodeEdit } from './context';
 import { inputClass } from './Field';
@@ -16,10 +17,13 @@ export function WebhookUrls({ property }: { property: NodeProperty }) {
   const node = useEditor((s) => s.nodes.find((n) => n.name === nodeName));
   const info = useQuery({ queryKey: ['system', 'info'], queryFn: () => api<SystemInfo>('/system/info'), staleTime: 60_000 });
   const [tab, setTab] = useState<'test' | 'production'>('test');
+  const [qr, setQr] = useState(false);
+  const active = useEditor((s) => s.active);
   if (!node) return null;
   const prefix = property.typeOptions?.urlPrefix ?? 'webhook';
-  const params = node.parameters as { path?: string; httpMethod?: string };
-  const path = String(params.path || node.webhookId || node.id)
+  const isForm = prefix === 'form';
+  const params = node.parameters as { path?: string; httpMethod?: string; options?: { path?: string } };
+  const path = String((isForm ? params.options?.path : params.path) || node.webhookId || node.id)
     .trim()
     .replace(/^\/+|\/+$/g, '');
   const base = info.data?.publicUrl ?? window.location.origin;
@@ -45,12 +49,50 @@ export function WebhookUrls({ property }: { property: NodeProperty }) {
         <div className="min-w-0 flex-1">
           <CopyText text={url} testId="webhook-url" />
         </div>
+        {isForm && (
+          <>
+            <button type="button" title="Show the QR code" data-testid="form-qr-button" onClick={() => setQr(true)} className="rounded-md border border-line bg-panel-2 p-1.5 text-muted hover:border-accent hover:text-fg">
+              <QrCode size={15} />
+            </button>
+            <a href={sameOriginPath(url)} target="_blank" rel="noreferrer" title="Open the form" data-testid="form-open" className="rounded-md border border-line bg-panel-2 p-1.5 text-muted hover:border-accent hover:text-fg">
+              <ExternalLink size={15} />
+            </a>
+          </>
+        )}
       </div>
-      <p className="text-[11.5px] text-subtle">
-        {tab === 'test'
-          ? 'Works once after clicking "Listen for test event" (120 s). The run shows live in the editor.'
-          : 'Works while the workflow is active. Runs appear in the executions list.'}
-      </p>
+      {isForm ? (
+        <div className="flex items-start gap-3">
+          <button type="button" onClick={() => setQr(true)} title="Show a large QR code" className="shrink-0 rounded-lg bg-white p-1.5 transition-transform hover:scale-105" data-testid="form-qr-thumb">
+            <img src={qrSrc(url, 240)} alt="QR code of the form" width={84} height={84} className="block size-[84px]" />
+          </button>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <p className="text-[11.5px] text-subtle" data-testid="form-url-status">
+              {tab === 'test'
+                ? 'Test URL: works for one submission after clicking "Listen for test event" (5 minutes). The run shows live in the editor.'
+                : active
+                  ? 'Production URL: the workflow is active, the form is online.'
+                  : 'Production URL: works once the workflow is saved and switched to Active.'}
+            </p>
+            <ReachHint info={info.data} />
+          </div>
+        </div>
+      ) : (
+        <p className="text-[11.5px] text-subtle">
+          {tab === 'test'
+            ? 'Works once after clicking "Listen for test event" (120 s). The run shows live in the editor.'
+            : 'Works while the workflow is active. Runs appear in the executions list.'}
+        </p>
+      )}
+      {qr && (
+        <QrDialog
+          url={url}
+          title={`${String((node.parameters as { formTitle?: string }).formTitle || 'Form')} (${tab})`}
+          openHref={sameOriginPath(url)}
+          fileName={`form-qr-${tab}`}
+          note={tab === 'test' ? 'Test URL: click "Listen for test event" first. It accepts one submission.' : active ? undefined : 'The production URL works once the workflow is Active.'}
+          onClose={() => setQr(false)}
+        />
+      )}
     </div>
   );
 }

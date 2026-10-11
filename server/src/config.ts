@@ -11,6 +11,7 @@ export interface AppConfig {
   host: string;
   /** Base URL for webhooks, forms and QR codes (LAN address unless PUBLIC_URL is set). */
   publicUrl: string;
+  publicUrlSource: 'env' | 'lan' | 'localhost';
   localUrl: string;
   dataDir: string;
   webDistDir: string;
@@ -31,6 +32,11 @@ export interface AppConfig {
   filesRoot: string;
   webhookMaxBodyBytes: number;
   webhookRatePerMinute: number;
+  /** Public forms: max submissions per minute per IP, and max upload size. */
+  formRatePerMinute: number;
+  formMaxBodyBytes: number;
+  /** FLOWFORGE_ENCRYPTION_KEY (otherwise data/.encryption_key is used). */
+  encryptionKey?: string;
 }
 
 const isTimezone = (tz: string) => {
@@ -64,6 +70,9 @@ const EnvSchema = z.object({
   FLOWFORGE_FILES_DIR: z.string().optional(),
   WEBHOOK_MAX_BODY_MB: z.coerce.number().positive().max(1024).default(16),
   WEBHOOK_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(600),
+  FORM_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(30),
+  FORM_MAX_UPLOAD_MB: z.coerce.number().positive().max(1024).default(10),
+  FLOWFORGE_ENCRYPTION_KEY: z.string().min(16, 'must be at least 16 characters').optional(),
 });
 
 /** Loads `.env` from the repo root (never overriding real environment variables). */
@@ -93,6 +102,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: e.PORT,
     host: e.HOST,
     publicUrl,
+    publicUrlSource: e.PUBLIC_URL ? 'env' : lanHost ? 'lan' : 'localhost',
     localUrl,
     dataDir,
     webDistDir: WEB_DIST_DIR,
@@ -111,5 +121,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       : resolve(dataDir, 'files'),
     webhookMaxBodyBytes: Math.round(e.WEBHOOK_MAX_BODY_MB * 1024 * 1024),
     webhookRatePerMinute: e.WEBHOOK_RATE_LIMIT_PER_MINUTE,
+    formRatePerMinute: e.FORM_RATE_LIMIT_PER_MINUTE,
+    formMaxBodyBytes: Math.round(e.FORM_MAX_UPLOAD_MB * 1024 * 1024),
+    encryptionKey: e.FLOWFORGE_ENCRYPTION_KEY,
   };
 }

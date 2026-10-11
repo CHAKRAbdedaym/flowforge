@@ -19,7 +19,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run build -w shared && npm run typecheck && npm run test --workspaces --if-present",
     "test:e2e": "node scripts/build.mjs --if-stale && npm run test:e2e -w web",
-    "user:reset": "node scripts/build.mjs --if-stale && node server/dist/cli/user-reset.js"
+    "user:reset": "node scripts/build.mjs --if-stale && node server/dist/cli/user-reset.js",
+    "check:email": "node scripts/build.mjs --if-stale && node server/dist/cli/check-email.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.5",

@@ -6,7 +6,7 @@ import { createApp, type FlowForgeApp } from '../src/app.js';
 import { loadConfig, type AppConfig } from '../src/config.js';
 import { createContext, type AppContext } from '../src/context.js';
 import { openDatabase } from '../src/db/index.js';
-import { silentLogger } from '../src/logger.js';
+import { silentLogger, type Logger } from '../src/logger.js';
 import { getTestRegistry } from './engine-helpers.js';
 
 export const OWNER = {
@@ -29,7 +29,11 @@ export interface TestApp extends FlowForgeApp {
   ctx: AppContext;
 }
 
-export async function makeTestApp(overrides: Partial<AppConfig> = {}, options: { dbFile?: string } = {}): Promise<TestApp> {
+/** `options.env` is what credentials see as .env (default: nothing, so a developer's real .env never leaks into tests). */
+export async function makeTestApp(
+  overrides: Partial<AppConfig> = {},
+  options: { dbFile?: string; env?: NodeJS.ProcessEnv; logger?: Logger } = {},
+): Promise<TestApp> {
   const dataDir = overrides.dataDir ?? mkdtempSync(join(tmpdir(), 'ff-data-'));
   const config: AppConfig = {
     ...loadConfig({ HOST: '127.0.0.1' }),
@@ -39,7 +43,7 @@ export async function makeTestApp(overrides: Partial<AppConfig> = {}, options: {
     publicUrl: 'http://ff.test',
     ...overrides,
   };
-  const ctx = createContext(config, openDatabase(options.dbFile ?? ':memory:'), silentLogger, await getTestRegistry());
+  const ctx = createContext(config, openDatabase(options.dbFile ?? ':memory:'), options.logger ?? silentLogger, await getTestRegistry(), { env: options.env ?? {} });
   return { ...createApp(ctx), ctx };
 }
 
@@ -59,4 +63,13 @@ export async function listen(app: TestApp): Promise<string> {
   await new Promise<void>((resolve) => app.server.listen(0, '127.0.0.1', resolve));
   const { port } = app.server.address() as AddressInfo;
   return `http://127.0.0.1:${port}`;
+}
+
+/** Logger that keeps every line (to check that secrets are never logged). */
+export function capturingLogger(): Logger & { lines: string[] } {
+  const lines: string[] = [];
+  const log = (level: string) => (message: string, ...rest: unknown[]) => {
+    lines.push(`${level} ${message} ${rest.map((r) => (r instanceof Error ? `${r.message} ${r.stack}` : JSON.stringify(r))).join(' ')}`);
+  };
+  return { lines, debug: log('debug'), info: log('info'), warn: log('warn'), error: log('error') };
 }

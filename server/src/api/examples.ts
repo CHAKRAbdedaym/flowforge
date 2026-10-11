@@ -1,0 +1,73 @@
+import { randomUUID } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { Router } from 'express';
+import type { Connections, WorkflowNode, WorkflowSettings } from '@flowforge/shared';
+import type { AppServices } from '../app.js';
+import { notFound } from '../http/errors.js';
+import { ROOT_DIR } from '../paths.js';
+import { WorkflowBodySchema } from './schemas.js';
+
+export const EXAMPLES_DIR = join(ROOT_DIR, 'examples');
+
+export interface ExampleInfo {
+  id: string;
+  name: string;
+  description: string;
+  nodeCount: number;
+}
+
+interface ExampleFile {
+  name?: string;
+  nodes?: WorkflowNode[];
+  meta?: { description?: string };
+}
+
+function readExample(dir: string, id: string): ExampleFile | undefined {
+  if (!/^[\w-]+$/.test(id)) return undefined;
+  const file = join(dir, `${id}.json`);
+  if (!existsSync(file)) return undefined;
+  return JSON.parse(readFileSync(file, 'utf8')) as ExampleFile;
+}
+
+/** /api/examples — ready-made workflows from the repo's `examples/` folder, imported in one click. */
+export function examplesRouter(s: AppServices, dir = EXAMPLES_DIR): Router {
+  const router = Router();
+
+  router.get('/', (_req, res) => {
+    const list: ExampleInfo[] = existsSync(dir)
+      ? readdirSync(dir)
+          .filter((f) => f.endsWith('.json'))
+          .sort()
+          .flatMap((f) => {
+            const id = f.slice(0, -5);
+            try {
+              const wf = readExample(dir, id);
+              if (!wf) return [];
+              return [{ id, name: wf.name ?? id, description: wf.meta?.description ?? '', nodeCount: (wf.nodes ?? []).filter((n) => n.type !== 'flowforge.stickyNote').length }];
+            } catch {
+              return [];
+            }
+          })
+      : [];
+    res.json(list);
+  });
+
+  router.post('/:id/import', (req, res) => {
+    const example = readExample(dir, req.params.id);
+    if (!example) throw notFound('Example not found');
+    const body = WorkflowBodySchema.parse(example);
+    // Fresh webhook ids: every import gets its own form / webhook URL.
+    const nodes = (body.nodes as unknown as WorkflowNode[]).map((n) => (n.webhookId ? { ...n, webhookId: randomUUID() } : n));
+    const wf = s.workflowsRepo.create({
+      name: s.workflowsRepo.uniqueName(body.name),
+      nodes,
+      connections: body.connections as Connections,
+      settings: body.settings as WorkflowSettings,
+      pinData: {},
+    });
+    res.status(201).json(wf);
+  });
+
+  return router;
+}

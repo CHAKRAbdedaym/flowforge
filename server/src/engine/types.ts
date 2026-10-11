@@ -1,6 +1,7 @@
 import type {
   BinaryRef,
   ConnectionSpec,
+  CredentialValue,
   ExecutionMode,
   Item,
   JsonObject,
@@ -27,6 +28,20 @@ export interface SubWorkflowRequest {
   workflow?: WorkflowData;
   items: Item[];
   wait: boolean;
+}
+
+/** Credential values handed to a node (in memory only: never stored in execution data). */
+export interface ResolvedCredential {
+  data: Record<string, CredentialValue>;
+  /** "credential" = saved on the Credentials page, "env" = read from .env. */
+  source: 'credential' | 'env';
+  id?: string;
+  name?: string;
+}
+
+export interface CredentialsProvider {
+  /** Node-selected credential → default of the type → .env → MissingCredentialError. */
+  resolve(node: WorkflowNode, type: string): ResolvedCredential;
 }
 
 export interface NodeHelpers {
@@ -81,6 +96,8 @@ export interface ExecuteContext {
   executeWorkflow(request: SubWorkflowRequest): Promise<Item[]>;
   /** URLs that resume this execution when it waits for a webhook call or a form. */
   getResumeUrls(): { webhook: string; form: string };
+  /** Credentials of a type declared in the node description. Throws MissingCredentialError. */
+  getCredentials(type: string): Promise<ResolvedCredential>;
 }
 
 /** Given to trigger nodes while their workflow is active (or listening for a test event). */
@@ -118,6 +135,8 @@ export interface WebhookRequestData {
   files: Array<{ field: string; fileName: string; mimeType: string; data: Buffer }>;
   /** Full URL that was called. */
   webhookUrl: string;
+  /** Path of the request as the caller sent it (e.g. "/form-test/abc"): use it for links back to the same URL. */
+  requestPath: string;
   executionMode: 'test' | 'production';
 }
 
@@ -136,7 +155,14 @@ export type WebhookHandleResult =
       /** lastNode: what to send back. */
       lastNodeData?: 'firstEntryJson' | 'allEntries' | 'firstEntryBinary' | 'noData';
       binaryProperty?: string;
+      /**
+       * Custom answer (forms): called right away for onReceived, or when the run ends for lastNode.
+       * Replaces the default bodies of those response modes.
+       */
+      complete?(outcome: WebhookOutcome): WebhookResponse;
     };
+
+export type WebhookOutcome = { finished: false } | { finished: true; status: string; error?: string };
 
 /** Nodes that receive HTTP requests (Webhook, Form Trigger, Chat Trigger). */
 export interface WebhookSpec {
@@ -149,6 +175,8 @@ export interface WebhookSpec {
     parameters: JsonObject;
     node: WorkflowNode;
     storeBinary(data: Buffer, fileName?: string, mimeType?: string): Promise<BinaryRef>;
+    /** Credentials declared by the node (e.g. Basic Auth of a Webhook). */
+    getCredentials(type: string): ResolvedCredential;
   }): Promise<WebhookHandleResult> | WebhookHandleResult;
   /** Allowed CORS origins ("*" or comma-separated), undefined = no CORS headers. */
   cors?(parameters: JsonObject): string | undefined;

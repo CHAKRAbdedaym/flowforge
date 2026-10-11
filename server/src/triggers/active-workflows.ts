@@ -1,9 +1,10 @@
 import type { Item, WorkflowData, WorkflowNode } from '@flowforge/shared';
+import { checkNodeCredentials } from '../credentials/check.js';
 import type { WorkflowsRepo } from '../db/repositories/workflows.js';
 import type { ExecutionService } from '../engine/execution-service.js';
 import { FlowError } from '../engine/errors.js';
 import { withDefaults } from '../engine/params.js';
-import type { NodeType, TriggerContext } from '../engine/types.js';
+import type { CredentialsProvider, NodeType, TriggerContext } from '../engine/types.js';
 import type { Logger } from '../logger.js';
 import type { NodeRegistry } from '../nodes/registry.js';
 import type { WsHub } from '../ws/hub.js';
@@ -39,6 +40,7 @@ export interface ActiveWorkflowOptions {
   ws?: WsHub;
   timezone: string;
   filesRoot: string;
+  credentials?: CredentialsProvider;
 }
 
 /** Starts repeating polls; the first poll runs right away (it records what already exists). */
@@ -220,17 +222,19 @@ export class ActiveWorkflowManager {
     for (const { node, type, kind } of triggers) {
       const ctx = contextFor(node, type, 'trigger');
       try {
+        checkNodeCredentials(node, type, this.o.credentials);
         if (kind === 'webhook') {
           const spec = type.webhook!;
           const params = withDefaults(type.properties, node.parameters ?? {});
           const { methods, path: rawPath } = spec.endpoints(node, params);
           const path = normalizePath(rawPath);
-          const conflict = this.o.webhooks.findConflict(methods, path, id, node.name);
+          const conflict = this.o.webhooks.findConflict(methods, path, id, node.name, spec.urlPrefix);
           if (conflict) {
-            throw new ActivationError(`The webhook path "${path}" (${methods.join(', ')}) is already used by the active workflow "${conflict.workflow.name}"`, 'Change the path or the HTTP method.');
+            const what = spec.urlPrefix === 'form' ? 'form' : 'webhook';
+            throw new ActivationError(`The ${what} path "${path}" (${methods.join(', ')}) is already used by the active workflow "${conflict.workflow.name}"`, 'Change the path or the HTTP method.');
           }
           starters.push(async () => {
-            const reg = { kind: 'prod' as const, workflowId: id, workflow, nodeName: node.name, methods, path };
+            const reg = { kind: 'prod' as const, prefix: spec.urlPrefix, workflowId: id, workflow, nodeName: node.name, methods, path };
             this.o.webhooks.add(reg);
             return () => this.o.webhooks.remove(reg);
           });

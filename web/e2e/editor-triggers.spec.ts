@@ -112,6 +112,13 @@ test('workflow settings dialog: choose an error workflow and a timeout', async (
 });
 
 test('a field type without an editor falls back to a JSON editor instead of crashing', async ({ page }) => {
+  // Simulate a node from a newer server: one of its parameters has a type this editor does not know.
+  await page.route('**/api/node-types', async (route) => {
+    const response = await route.fetch();
+    const types = (await response.json()) as { type: string; properties: { name: string; type: string }[] }[];
+    for (const t of types) if (t.type === 'flowforge.wait') for (const p of t.properties) if (p.name === 'formFields') p.type = 'futureType';
+    await route.fulfill({ response, json: types });
+  });
   await openNewWorkflow(page, {
     name: 'E2E fallback',
     nodes: [
@@ -122,7 +129,10 @@ test('a field type without an editor falls back to a JSON editor instead of cras
   });
   await canvasNode(page, 'Wait').dblclick();
   const field = page.getByTestId('param-formFields');
-  await expect(field).toContainText('Field type "formFields" has no editor yet. Edit it as JSON.');
+  await expect(field).toContainText('Field type "futureType" has no editor yet. Edit it as JSON.');
   await expect(field.locator('.cm-content')).toContainText('fieldLabel');
+  // The value stays editable: valid JSON typed into the editor is stored.
+  await field.locator('.cm-content').fill('{"values":[{"fieldLabel":"Edited as JSON","fieldType":"text"}]}');
+  await expect(page.getByTestId('save-state')).toContainText(/unsaved/i);
   await expect(page.getByTestId('param-formTitle')).toBeVisible();
 });

@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import type { ExecutionDetail, Item, JsonObject, WorkflowData } from '@flowforge/shared';
-import type { NodeType } from '../engine/types.js';
+import { renderFormMessage, SESSION_COOKIE } from '@flowforge/shared';
+import type { CredentialsProvider, NodeType } from '../engine/types.js';
+import { CredentialError, FlowError } from '../engine/errors.js';
 import type { ExecutionsRepo } from '../db/repositories/executions.js';
 import type { BinaryStore } from '../engine/binary-store.js';
 import type { ExecutionService, StartedExecution, WebhookResponder } from '../engine/execution-service.js';
@@ -22,12 +24,47 @@ export interface WebhookServiceOptions {
   logger: Logger;
   publicUrl: string;
   maxBodyBytes: number;
+  /** Body limit of public forms (file uploads). */
+  formMaxBodyBytes?: number;
   timezone?: string;
+  credentials?: CredentialsProvider;
   /** A test webhook was called (single shot): the editor is told which execution started. */
   onTestReceived?(reg: WebhookRegistration, executionId: string): void;
 }
 
 const json = (res: Response, status: number, body: unknown) => res.status(status).json(body);
+
+const wantsJson = (req: Request) => /application\/json/i.test(String(req.headers.accept ?? ''));
+
+/** Error answer of a public form: JSON for the page's fetch() call, otherwise a styled HTML page. */
+function formProblem(req: Request, res: Response, status: number, title: string, message: string) {
+  if (wantsJson(req)) {
+    json(res, status, { ok: false, message: `${title}. ${message}` });
+    return;
+  }
+  res.status(status).type('html').send(renderFormMessage({ title, message, tone: 'error' }));
+}
+
+/**
+ * Request headers as workflow data. The FlowForge session cookie is removed: a signed-in user calling a
+ * webhook or form from the same browser must not leak their session into execution data.
+ */
+export function requestHeaders(req: Request): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(req.headers)) {
+    let text = Array.isArray(value) ? value.join(', ') : String(value ?? '');
+    if (key === 'cookie') {
+      text = text
+        .split(';')
+        .map((part) => part.trim())
+        .filter((part) => part && !part.startsWith(`${SESSION_COOKIE}=`))
+        .join('; ');
+      if (!text) continue;
+    }
+    headers[key] = text;
+  }
+  return headers;
+}
 
 /**
  * Webhook settings are read before the workflow runs, so expressions see no item data
@@ -76,12 +113,18 @@ export function sendWebhookResponse(res: Response, response: WebhookResponse): v
 export class WebhookService {
   constructor(private readonly o: WebhookServiceOptions) {}
 
-  async handle(kind: WebhookKind, req: Request, res: Response, rawPath: string): Promise<void> {
+  async handle(kind: WebhookKind, req: Request, res: Response, rawPath: string, urlPrefix: 'webhook' | 'form' = 'webhook'): Promise<void> {
     const method = req.method.toUpperCase();
-    if (method === 'OPTIONS') return this.preflight(kind, req, res, rawPath);
-    const match = this.o.registry.match(kind, method, rawPath);
-    const prefix = kind === 'test' ? 'webhook-test' : 'webhook';
+    const isForm = urlPrefix === 'form';
+    if (method === 'OPTIONS' && !isForm) return this.preflight(kind, req, res, rawPath);
+    const match = this.o.registry.match(kind, method, rawPath, urlPrefix);
+    const prefix = kind === 'test' ? `${urlPrefix}-test` : urlPrefix;
     if (!match) {
+      if (isForm) {
+        return kind === 'test'
+          ? formProblem(req, res, 404, 'This test form is not listening', 'In the editor, open the Form Trigger and click "Listen for test event", then reload this page.')
+          : formProblem(req, res, 404, 'This form is not available', 'The workflow behind this form is not active. Activate it in the editor to use this URL.');
+      }
       json(res, 404, {
         message: `The requested webhook "${method} ${rawPath}" is not registered.`,
         hint:
@@ -93,7 +136,7 @@ export class WebhookService {
     }
     if ('methods' in match) {
       res.setHeader('Allow', match.methods.join(', '));
-      json(res, 405, { message: `This webhook accepts ${match.methods.join(', ')} requests, not ${method}.` });
+      json(res, 405, { message: `This ${isForm ? 'form' : 'webhook'} accepts ${match.methods.join(', ')} requests, not ${method}.` });
       return;
     }
     const { reg, params } = match;
@@ -107,16 +150,17 @@ export class WebhookService {
     try {
       parameters = resolveStatic(type, reg.workflow, node.name, node.parameters ?? {}, reg.workflow.settings?.timezone || this.o.timezone || 'UTC');
     } catch (err) {
-      json(res, 500, { message: `The webhook settings contain an invalid expression: ${(err as Error).message}` });
+      json(res, 500, { message: `The ${isForm ? 'form' : 'webhook'} settings contain an invalid expression: ${(err as Error).message}` });
       return;
     }
-    this.applyCors(req, res, type.webhook.cors?.(parameters));
+    if (!isForm) this.applyCors(req, res, type.webhook.cors?.(parameters));
 
     let parsed;
     try {
-      parsed = await parseRequest(req, this.o.maxBodyBytes);
+      parsed = await parseRequest(req, isForm ? (this.o.formMaxBodyBytes ?? this.o.maxBodyBytes) : this.o.maxBodyBytes);
     } catch (err) {
       const e = err instanceof RequestError ? err : new RequestError(400, 'Could not read the request');
+      if (isForm) return formProblem(req, res, e.status, e.status === 413 ? 'The upload is too large' : 'The form could not be read', e.message);
       json(res, e.status, { message: e.message });
       return;
     }
@@ -124,21 +168,39 @@ export class WebhookService {
       method,
       params,
       query: req.query as Record<string, unknown>,
-      headers: Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : String(v ?? '')])),
+      headers: requestHeaders(req),
       body: parsed.body,
       contentType: parsed.contentType,
       rawBody: parsed.rawBody,
       files: parsed.files,
       webhookUrl: `${this.o.publicUrl}/${prefix}/${reg.path}`,
+      requestPath: req.originalUrl.split('?')[0] ?? `/${prefix}/${reg.path}`,
       executionMode: kind === 'test' ? 'test' : 'production',
     };
     const folder = `wh-${randomUUID()}`;
-    const result = await type.webhook.handle({
-      request,
-      parameters,
-      node,
-      storeBinary: (data, fileName, mimeType) => this.o.binaryStore.store(folder, data, fileName, mimeType),
-    });
+    let result: WebhookHandleResult;
+    try {
+      result = await type.webhook.handle({
+        request,
+        parameters,
+        node,
+        storeBinary: (data, fileName, mimeType) => this.o.binaryStore.store(folder, data, fileName, mimeType),
+        getCredentials: (credentialType) => {
+          if (!type.description.credentials?.some((c) => c.type === credentialType)) {
+            throw new FlowError(`Node "${node.name}" does not declare "${credentialType}" credentials`);
+          }
+          if (!this.o.credentials) throw new CredentialError('Credentials are not available', { credentialType });
+          return this.o.credentials.resolve(node, credentialType);
+        },
+      });
+    } catch (err) {
+      // Configuration problems (e.g. missing credential): tell the caller without leaking internals.
+      const message = err instanceof FlowError ? err.message : 'The request could not be processed.';
+      this.o.logger.warn(`${isForm ? 'Form' : 'Webhook'} "${reg.path}" of "${reg.workflow.name}" failed: ${message}`);
+      if (isForm) return formProblem(req, res, 500, 'This form is not set up correctly', message);
+      json(res, 500, { message, ...(err instanceof FlowError && err.hint ? { hint: err.hint } : {}) });
+      return;
+    }
     if ('response' in result) {
       sendWebhookResponse(res, result.response);
       return;
@@ -185,7 +247,7 @@ export class WebhookService {
     }
     const item: Item = {
       json: {
-        headers: Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : String(v ?? '')])),
+        headers: requestHeaders(req),
         params: {},
         query: req.query as Record<string, unknown>,
         body: parsed.body as Item['json'][string],
@@ -230,11 +292,13 @@ export class WebhookService {
       const started = start();
       onStarted?.(started.executionId);
       if (result.responseMode === 'onReceived') {
+        if (result.complete) return sendWebhookResponse(res, result.complete({ finished: false }));
         sendWebhookResponse(res, { statusCode: code, headers, body: result.onReceivedBody ?? { message: 'Workflow was started' } });
         return;
       }
       // lastNode: wait for the end of the execution.
       const detail = await started.done;
+      if (result.complete) return sendWebhookResponse(res, result.complete({ finished: true, status: detail.status, error: detail.error?.message }));
       if (detail.status !== 'success') return this.finishWithoutResponse(res, detail, false);
       const runs = detail.lastNodeExecuted ? detail.runData[detail.lastNodeExecuted] : undefined;
       const items = runs?.[runs.length - 1]?.data.main[0] ?? [];

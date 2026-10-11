@@ -1,4 +1,4 @@
-import type { NodeProperty } from '@flowforge/shared';
+import { FORM_THEMES, type NodeProperty } from '@flowforge/shared';
 import { NodeOperationError } from '../../engine/errors.js';
 import { defineNode } from '../../engine/types.js';
 
@@ -74,14 +74,26 @@ export default defineNode({
       displayOptions: show(['form']),
     },
     { name: 'formTitle', displayName: 'Form Title', type: 'string', default: 'Please confirm', displayOptions: show(['form']) },
-    { name: 'formDescription', displayName: 'Form Description', type: 'string', default: '', displayOptions: show(['form']) },
+    { name: 'formDescription', displayName: 'Form Description', type: 'string', default: '', typeOptions: { rows: 2 }, displayOptions: show(['form']) },
     {
-      name: 'formFields',
-      displayName: 'Form Fields',
-      type: 'formFields',
-      default: { values: [{ fieldLabel: 'Comment', fieldType: 'textarea', requiredField: false }] },
+      name: 'formTheme',
+      displayName: 'Theme',
+      type: 'options',
+      default: 'midnight',
+      options: FORM_THEMES.map((t) => ({ name: t.label, value: t.value })),
+      typeOptions: { editorHidden: true },
+      noDataExpression: true,
       displayOptions: show(['form']),
     },
+    {
+      name: 'formFields',
+      displayName: 'Form Elements',
+      type: 'formFields',
+      default: { values: [{ id: 'comment', fieldLabel: 'Comment', fieldType: 'textarea', requiredField: false }] },
+      noDataExpression: true,
+      displayOptions: show(['form']),
+    },
+    { name: 'formButtonLabel', displayName: 'Submit Button Text', type: 'string', default: 'Submit', displayOptions: show(['form']) },
     { name: 'formCompletionMessage', displayName: 'Completion Message', type: 'string', default: 'Thank you, your answer was submitted.', displayOptions: show(['form']) },
     { name: 'limitWaitTime', displayName: 'Limit Wait Time', type: 'boolean', default: false, displayOptions: show(['webhook', 'form']) },
     {

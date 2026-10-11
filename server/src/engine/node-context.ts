@@ -1,11 +1,11 @@
 import type { BinaryRef, ExecutionMode, Item, JsonObject, RunData, TaskSource, WorkflowData, WorkflowNode } from '@flowforge/shared';
 import type { Logger } from '../logger.js';
 import type { BinaryStore } from './binary-store.js';
-import { NodeOperationError, WaitSignal, toFlowError } from './errors.js';
+import { CredentialError, NodeOperationError, WaitSignal, toFlowError } from './errors.js';
 import type { ExpressionEngine, ExpressionScope } from './expressions/engine.js';
 import { getDefault, getPath, isNoExpression } from './params.js';
 import { resolvePairedItem } from './paired-items.js';
-import type { ExecuteContext, NodeHelpers, NodeType, SubWorkflowRequest, WebhookResponse } from './types.js';
+import type { CredentialsProvider, ExecuteContext, NodeHelpers, NodeType, ResolvedCredential, SubWorkflowRequest, WebhookResponse } from './types.js';
 
 /** Capabilities the execution service gives to nodes (absent in plain test runs). */
 export interface ExecutionServices {
@@ -34,6 +34,7 @@ export interface NodeContextOptions {
   variables: Record<string, string>;
   env: Record<string, string> | null;
   services?: ExecutionServices;
+  credentials?: CredentialsProvider;
 }
 
 export class NodeExecutionContext implements ExecuteContext {
@@ -195,5 +196,15 @@ export class NodeExecutionContext implements ExecuteContext {
 
   getResumeUrls(): { webhook: string; form: string } {
     return this.o.services?.resumeUrls ?? { webhook: '', form: '' };
+  }
+
+  async getCredentials(type: string): Promise<ResolvedCredential> {
+    if (!this.o.type.description.credentials?.some((c) => c.type === type)) {
+      throw new NodeOperationError(`Node "${this.node.name}" does not declare "${type}" credentials`);
+    }
+    if (!this.o.credentials) {
+      throw new CredentialError('Credentials are not available in this run', { credentialType: type, hint: 'Run the workflow from the editor or a trigger.' });
+    }
+    return this.o.credentials.resolve(this.node, type);
   }
 }

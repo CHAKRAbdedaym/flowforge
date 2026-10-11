@@ -65,6 +65,8 @@ export interface NodeProperty {
     loadOptions?: string;
     /** webhookUrls: URL prefixes (e.g. "webhook" → /webhook/… and /webhook-test/…). */
     urlPrefix?: string;
+    /** Not rendered in the parameter list (edited by a custom editor, e.g. the form theme). */
+    editorHidden?: boolean;
   };
   /** If true the value is never evaluated as an expression (e.g. code). */
   noDataExpression?: boolean;
@@ -90,7 +92,8 @@ export interface NodeDescription {
   /** Static outputs; nodes with `dynamicOutputs` compute the real list from their parameters. */
   outputs: ConnectionSpec[];
   dynamicOutputs?: boolean;
-  credentials?: { type: string; required?: boolean }[];
+  /** Credential types the node uses; displayOptions shows the selector only for some parameter values. */
+  credentials?: { type: string; required?: boolean; displayOptions?: DisplayOptions }[];
   trigger?: { kind: TriggerKind };
   keywords?: string[];
   docsUrl?: string;

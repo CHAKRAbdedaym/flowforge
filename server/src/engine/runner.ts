@@ -26,7 +26,7 @@ import {
 import type { ExpressionEngine } from './expressions/engine.js';
 import { WorkflowGraph } from './graph.js';
 import { NodeExecutionContext, type ExecutionServices } from './node-context.js';
-import type { NodeType } from './types.js';
+import type { CredentialsProvider, NodeType } from './types.js';
 
 export interface RunHooks {
   nodeStarted?(nodeName: string, runIndex: number): void;
@@ -74,6 +74,8 @@ export interface RunnerDeps {
   binaryStore: BinaryStore;
   logger: Logger;
   defaults: { timeoutMs: number; maxNodeRuns: number; timezone: string };
+  /** Credential lookup for integration nodes (absent in plain engine tests). */
+  credentials?: CredentialsProvider;
 }
 
 interface Task {
@@ -473,6 +475,7 @@ export class WorkflowRunner {
         variables: req.variables ?? {},
         env: req.env === undefined ? null : req.env,
         services: req.services,
+        credentials: this.deps.credentials,
       });
       try {
         const raw = await raceAbort(() => type.execute!(ctx), signal);

@@ -1,6 +1,10 @@
 import { join } from 'node:path';
 import type { AppConfig } from './config.js';
+import { CredentialCipher, loadEncryptionKey } from './credentials/cipher.js';
+import { CredentialTypeRegistry } from './credentials/registry.js';
+import { CredentialsService } from './credentials/service.js';
 import type { DB } from './db/index.js';
+import { CredentialsRepo } from './db/repositories/credentials.js';
 import { ExecutionsRepo } from './db/repositories/executions.js';
 import { SessionsRepo } from './db/repositories/sessions.js';
 import { UsersRepo } from './db/repositories/users.js';
@@ -21,9 +25,10 @@ export interface AppContext {
   workflowsRepo: WorkflowsRepo;
   registry: NodeRegistry;
   binaryStore: BinaryStore;
+  credentials: CredentialsService;
 }
 
-export function createContext(config: AppConfig, db: DB, logger: Logger, registry: NodeRegistry): AppContext {
+export function createContext(config: AppConfig, db: DB, logger: Logger, registry: NodeRegistry, options: { env?: NodeJS.ProcessEnv } = {}): AppContext {
   return {
     config,
     db,
@@ -35,5 +40,12 @@ export function createContext(config: AppConfig, db: DB, logger: Logger, registr
     workflowsRepo: new WorkflowsRepo(db),
     registry,
     binaryStore: new BinaryStore(join(config.dataDir, 'binary')),
+    credentials: new CredentialsService({
+      repo: new CredentialsRepo(db),
+      cipher: new CredentialCipher(loadEncryptionKey(config.dataDir, config.encryptionKey)),
+      types: new CredentialTypeRegistry(),
+      logger,
+      env: options.env,
+    }),
   };
 }

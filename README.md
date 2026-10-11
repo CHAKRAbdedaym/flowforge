@@ -26,7 +26,7 @@ port or the public URL.
 
 ## Run a workflow without the editor (development)
 
-Until the visual editor exists you can run any workflow JSON with curl. Example workflows are in
+Besides the visual editor, any workflow JSON can be run with curl. Example workflows are in
 `server/tests/fixtures/workflows/`.
 
 ```bash
@@ -47,6 +47,47 @@ execution id immediately, `startNode=<trigger>` picks the trigger. Full details:
 - Test URL: `http://<host>:5679/webhook-test/<path>` — works once after **Listen for test event**.
 - Example workflows to import with curl: `server/tests/fixtures/workflows/09…14` (response modes, schedule, waits).
 
+## Email and forms
+
+- **Credentials** (sidebar): add your SMTP login once (Gmail App Password or Brevo), click **Test**, save.
+  It is stored encrypted. Step-by-step guide with links: [API_SETUP.md](API_SETUP.md#email-smtp).
+- **Send Email** node: text, HTML or a designed responsive template, attachments from binary data.
+- **Form Trigger** node: visual form builder with live preview, 3 themes, a public mobile page and a QR code.
+- Ready-made example: **Workflows → Examples → "Contact form → emails"** (the JSON is in [`examples/`](examples)).
+- Check your SMTP settings from the terminal: `npm run check:email` (prints OK or FAIL with the reason).
+
+## Open FlowForge from a phone
+
+Forms, webhooks and QR codes use the **public URL** shown at startup (`➜ Network: http://192.168.x.x:5679`).
+
+**1. Same Wi-Fi (simplest).** Connect the phone to the same network as the computer and scan the QR code of
+the form. If the page does not load, the computer's firewall is blocking port 5679:
+
+| System | Command |
+|---|---|
+| Fedora / RHEL | `sudo firewall-cmd --add-port=5679/tcp` (until reboot; add `--permanent` then `sudo firewall-cmd --reload` to keep it) |
+| Ubuntu / Debian (ufw) | `sudo ufw allow 5679/tcp` |
+| Windows (admin PowerShell) | `netsh advfirewall firewall add rule name="FlowForge" dir=in action=allow protocol=TCP localport=5679` |
+| macOS | Click **Allow** when macOS asks whether `node` may accept incoming connections |
+
+**2. Any network: Cloudflare quick tunnel (fallback).** School and guest Wi-Fi often isolate devices from each
+other. A tunnel gives a public `https://` address without an account:
+
+```bash
+# install once: download "cloudflared" for your system from https://github.com/cloudflare/cloudflared/releases
+cloudflared tunnel --url http://localhost:5679
+```
+
+Copy the `https://….trycloudflare.com` address it prints into `.env` and restart FlowForge:
+
+```ini
+PUBLIC_URL=https://your-words.trycloudflare.com
+```
+
+Every form URL and QR code now uses that address. The address changes each time `cloudflared` restarts.
+
+**Wrong address detected?** Set `PUBLIC_URL=http://<your-ip>:5679` in `.env` yourself.
+
 ## Troubleshooting
 
 - **"No SQLite driver could be loaded"** at startup: during `npm install`, `better-sqlite3` downloads a
@@ -54,6 +95,11 @@ execution id immediately, `startNode=<trigger>` picks the trigger. Full details:
   `npm install` again on a better network, or use Node 22.13 or newer: FlowForge then falls back
   automatically to Node's built-in SQLite.
 - **Port 5679 already in use**: set `PORT=5680` in `.env`.
+- **"This credential cannot be decrypted"**: `data/.encryption_key` was deleted or replaced. Open the
+  credential and type its values again (always back up that file together with `data/flowforge.db`).
+- **Emails are not sent**: run `npm run check:email`. The table in [API_SETUP.md](API_SETUP.md#how-to-verify)
+  explains each message.
+- **The phone cannot open a form**: see [Open FlowForge from a phone](#open-flowforge-from-a-phone).
 
 ## Commands
 
@@ -63,4 +109,5 @@ execution id immediately, `startNode=<trigger>` picks the trigger. Full details:
 | `npm run dev` | Development mode with hot reload: open http://localhost:5173 |
 | `npm test` | Type checks + automated tests (offline) |
 | `npm run test:e2e` | Browser tests. Use your installed Chrome with `PW_CHANNEL=chrome npm run test:e2e`, or download Playwright's browser once with `npx playwright install chromium` |
+| `npm run check:email` | Sends a real test email with your SMTP credential (or `.env`) and prints OK / FAIL with the reason. Add `-- someone@example.com` to choose the recipient |
 | `npm run user:reset` | Forgot the password? Deletes user accounts so you can create a new owner (workflows are kept) |

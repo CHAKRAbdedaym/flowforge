@@ -109,6 +109,22 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_executions_waiting ON executions(status, wait_till);
     `,
   },
+  {
+    id: 5,
+    name: 'credentials',
+    sql: `
+      CREATE TABLE credentials (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        type       TEXT NOT NULL,
+        data       TEXT NOT NULL,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_credentials_type ON credentials(type, created_at);
+    `,
+  },
 ];
 
 export function runMigrations(db: DB, migrations: Migration[] = MIGRATIONS): number {

@@ -8,6 +8,7 @@ import { AppLayout } from '../layout/AppLayout';
 import { MAIN_NAV, SETTINGS_NAV } from '../layout/nav';
 import { ApiError } from '../lib/api';
 import { AUTH_STATUS_KEY } from '../lib/auth';
+import { CredentialsPage } from '../pages/CredentialsPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { OverviewPage } from '../pages/OverviewPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
@@ -71,6 +72,7 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/home" replace /> },
       { path: 'home', element: <RequireAuth>{(user) => <OverviewPage user={user} />}</RequireAuth> },
       { path: 'workflows', element: <WorkflowsPage /> },
+      { path: 'credentials', element: <CredentialsPage /> },
       ...placeholderPages.map((item) => ({ path: item.to.slice(1), element: <PlaceholderPage item={item} /> })),
       { path: '*', element: <NotFoundPage /> },
     ],

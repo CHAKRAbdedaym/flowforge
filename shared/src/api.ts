@@ -22,6 +22,9 @@ export interface SystemInfo {
   nodeVersion: string;
   /** Base URL used for webhooks, forms and QR codes. */
   publicUrl: string;
+  /** Where publicUrl comes from: PUBLIC_URL in .env, the detected LAN address, or localhost only. */
+  publicUrlSource: 'env' | 'lan' | 'localhost';
+  port: number;
   localUrl: string;
   dataDir: string;
   startedAt: string;

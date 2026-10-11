@@ -4,6 +4,8 @@ export type WebhookKind = 'prod' | 'test';
 
 export interface WebhookRegistration {
   kind: WebhookKind;
+  /** "/webhook/…" or "/form/…": separate namespaces. */
+  prefix?: 'webhook' | 'form';
   workflowId: string;
   /** Workflow snapshot that runs when the webhook is called. */
   workflow: WorkflowData;
@@ -47,11 +49,12 @@ export class WebhookRegistry {
   private regs: WebhookRegistration[] = [];
 
   /** A production webhook already using one of these methods on this path (other workflow or node). */
-  findConflict(methods: string[], path: string, workflowId: string, nodeName: string): WebhookRegistration | undefined {
+  findConflict(methods: string[], path: string, workflowId: string, nodeName: string, prefix: 'webhook' | 'form' = 'webhook'): WebhookRegistration | undefined {
     const target = shape(path);
     return this.regs.find(
       (r) =>
         r.kind === 'prod' &&
+        (r.prefix ?? 'webhook') === prefix &&
         shape(r.path) === target &&
         r.methods.some((m) => methods.includes(m)) &&
         !(r.workflowId === workflowId && r.nodeName === nodeName),
@@ -61,9 +64,12 @@ export class WebhookRegistry {
   add(reg: WebhookRegistration): void {
     if (reg.kind === 'test') {
       // Latest listener wins for the same method + path.
-      this.regs = this.regs.filter((r) => !(r.kind === 'test' && shape(r.path) === shape(reg.path) && r.methods.some((m) => reg.methods.includes(m))));
+      this.regs = this.regs.filter(
+        (r) =>
+          !(r.kind === 'test' && (r.prefix ?? 'webhook') === (reg.prefix ?? 'webhook') && shape(r.path) === shape(reg.path) && r.methods.some((m) => reg.methods.includes(m))),
+      );
     } else {
-      const conflict = this.findConflict(reg.methods, reg.path, reg.workflowId, reg.nodeName);
+      const conflict = this.findConflict(reg.methods, reg.path, reg.workflowId, reg.nodeName, reg.prefix);
       if (conflict) {
         throw new WebhookPathError(
           `The path "${reg.path}" (${reg.methods.join(', ')}) is already used by the active workflow "${conflict.workflow.name}"`,
@@ -86,7 +92,12 @@ export class WebhookRegistry {
   }
 
   /** Finds the registration for a request; `methods` lists what the path accepts when the method does not match. */
-  match(kind: WebhookKind, method: string, rawPath: string): { reg: WebhookRegistration; params: Record<string, string> } | { methods: string[] } | null {
+  match(
+    kind: WebhookKind,
+    method: string,
+    rawPath: string,
+    prefix: 'webhook' | 'form' = 'webhook',
+  ): { reg: WebhookRegistration; params: Record<string, string> } | { methods: string[] } | null {
     let path: string;
     try {
       path = normalizePath(decodeURIComponent(rawPath));
@@ -94,7 +105,7 @@ export class WebhookRegistry {
       return null;
     }
     const segments = path.split('/');
-    const candidates = this.regs.filter((r) => r.kind === kind);
+    const candidates = this.regs.filter((r) => r.kind === kind && (r.prefix ?? 'webhook') === prefix);
     const matchOne = (reg: WebhookRegistration): Record<string, string> | null => {
       const parts = reg.path.split('/');
       if (parts.length !== segments.length) return null;

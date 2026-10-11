@@ -1,7 +1,8 @@
 import type { TestListenResponse, WorkflowData } from '@flowforge/shared';
+import { checkNodeCredentials } from '../credentials/check.js';
 import type { ExecutionService } from '../engine/execution-service.js';
 import { withDefaults } from '../engine/params.js';
-import type { TriggerHandle } from '../engine/types.js';
+import type { CredentialsProvider, TriggerHandle } from '../engine/types.js';
 import type { Logger } from '../logger.js';
 import type { NodeRegistry } from '../nodes/registry.js';
 import type { WsHub } from '../ws/hub.js';
@@ -9,6 +10,8 @@ import { createTriggerContext } from './trigger-context.js';
 import { normalizePath, type WebhookRegistry } from './webhook-registry.js';
 
 export const TEST_LISTEN_MS = 120_000;
+/** Forms are filled by a human (maybe on a phone): listen longer. */
+export const TEST_FORM_LISTEN_MS = 300_000;
 
 export class TestListenError extends Error {
   constructor(
@@ -34,6 +37,7 @@ export interface TestListenersOptions {
   timezone: string;
   filesRoot: string;
   listenMs?: number;
+  credentials?: CredentialsProvider;
 }
 
 /**
@@ -67,6 +71,11 @@ export class TestListeners {
     if (node.disabled) throw new TestListenError(`Node "${nodeName}" is disabled`, 'Enable it first.');
     const type = this.o.nodes.require(node.type);
     const kind = type.description.trigger?.kind ?? 'manual';
+    try {
+      checkNodeCredentials(node, type, this.o.credentials);
+    } catch (err) {
+      throw new TestListenError((err as Error).message, (err as { hint?: string }).hint);
+    }
     const runNow = (triggerItems?: Parameters<ExecutionService['start']>[0]['triggerItems']) =>
       this.o.executions.start({ workflow, mode: 'manual', startNode: node.name, ...(triggerItems ? { triggerItems } : {}) }).executionId;
 
@@ -79,10 +88,12 @@ export class TestListeners {
       } catch (err) {
         throw new TestListenError((err as Error).message);
       }
-      const expiresAt = new Date(Date.now() + (this.o.listenMs ?? TEST_LISTEN_MS));
+      const isForm = type.webhook.urlPrefix === 'form';
+      const expiresAt = new Date(Date.now() + (this.o.listenMs ?? (isForm ? TEST_FORM_LISTEN_MS : TEST_LISTEN_MS)));
       const testUrl = `${this.o.publicUrl}/${type.webhook.urlPrefix}-test/${path}`;
       const reg = {
         kind: 'test' as const,
+        prefix: type.webhook.urlPrefix,
         workflowId: workflow.id,
         workflow,
         nodeName: node.name,
