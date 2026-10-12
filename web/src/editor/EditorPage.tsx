@@ -11,6 +11,7 @@ import { useTitle } from '../lib/useTitle';
 import { useWorkflow } from '../lib/workflows-api';
 import { setNodeTypes } from './actions';
 import { addSticky, Canvas } from './canvas/Canvas';
+import { ChatPanel } from './ChatPanel';
 import { CommandPalette } from './CommandPalette';
 import { NodeCreator } from './creator/NodeCreator';
 import { useEditorShortcuts, useLiveExecution } from './hooks';
@@ -51,6 +52,7 @@ function EditorShell({ list, byType }: { list: NodeTypeInfo[]; byType: Map<strin
       <div className="relative min-h-0 flex-1">
         <Canvas types={byType} />
         <NodeCreator types={list} />
+        <ChatPanel />
       </div>
       <ExecutionLog />
       <NodeDetailsView types={byType} />

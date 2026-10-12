@@ -9,7 +9,7 @@ import type { BinaryStore } from '../engine/binary-store.js';
 import type { ExecutionService, StartedExecution, WebhookResponder } from '../engine/execution-service.js';
 import { getExpressionEngine } from '../engine/expressions/engine.js';
 import { isNoExpression, withDefaults } from '../engine/params.js';
-import type { WebhookHandleResult, WebhookRequestData, WebhookResponse } from '../engine/types.js';
+import type { UrlPrefix, WebhookHandleResult, WebhookRequestData, WebhookResponse } from '../engine/types.js';
 import type { Logger } from '../logger.js';
 import type { NodeRegistry } from '../nodes/registry.js';
 import { parseRequest, RequestError } from './request.js';
@@ -113,13 +113,21 @@ export function sendWebhookResponse(res: Response, response: WebhookResponse): v
 export class WebhookService {
   constructor(private readonly o: WebhookServiceOptions) {}
 
-  async handle(kind: WebhookKind, req: Request, res: Response, rawPath: string, urlPrefix: 'webhook' | 'form' = 'webhook'): Promise<void> {
+  async handle(kind: WebhookKind, req: Request, res: Response, rawPath: string, urlPrefix: UrlPrefix = 'webhook'): Promise<void> {
     const method = req.method.toUpperCase();
-    const isForm = urlPrefix === 'form';
+    // Forms and chats are pages for people: their problems are shown as pages too.
+    const isChat = urlPrefix === 'chat';
+    const isForm = urlPrefix === 'form' || isChat;
+    const what = isChat ? 'chat' : urlPrefix === 'form' ? 'form' : 'webhook';
     if (method === 'OPTIONS' && !isForm) return this.preflight(kind, req, res, rawPath);
     const match = this.o.registry.match(kind, method, rawPath, urlPrefix);
     const prefix = kind === 'test' ? `${urlPrefix}-test` : urlPrefix;
     if (!match) {
+      if (isChat) {
+        return kind === 'test'
+          ? formProblem(req, res, 404, 'This test chat is not listening', 'Use the Chat panel of the editor to test: it starts listening for each message.')
+          : formProblem(req, res, 404, 'This chat is not available', 'The workflow behind this chat is not active. Activate it in the editor to use this URL.');
+      }
       if (isForm) {
         return kind === 'test'
           ? formProblem(req, res, 404, 'This test form is not listening', 'In the editor, open the Form Trigger and click "Listen for test event", then reload this page.')
@@ -136,7 +144,7 @@ export class WebhookService {
     }
     if ('methods' in match) {
       res.setHeader('Allow', match.methods.join(', '));
-      json(res, 405, { message: `This ${isForm ? 'form' : 'webhook'} accepts ${match.methods.join(', ')} requests, not ${method}.` });
+      json(res, 405, { message: `This ${what} accepts ${match.methods.join(', ')} requests, not ${method}.` });
       return;
     }
     const { reg, params } = match;
@@ -150,7 +158,7 @@ export class WebhookService {
     try {
       parameters = resolveStatic(type, reg.workflow, node.name, node.parameters ?? {}, reg.workflow.settings?.timezone || this.o.timezone || 'UTC');
     } catch (err) {
-      json(res, 500, { message: `The ${isForm ? 'form' : 'webhook'} settings contain an invalid expression: ${(err as Error).message}` });
+      json(res, 500, { message: `The ${what} settings contain an invalid expression: ${(err as Error).message}` });
       return;
     }
     if (!isForm) this.applyCors(req, res, type.webhook.cors?.(parameters));
@@ -160,7 +168,7 @@ export class WebhookService {
       parsed = await parseRequest(req, isForm ? (this.o.formMaxBodyBytes ?? this.o.maxBodyBytes) : this.o.maxBodyBytes);
     } catch (err) {
       const e = err instanceof RequestError ? err : new RequestError(400, 'Could not read the request');
-      if (isForm) return formProblem(req, res, e.status, e.status === 413 ? 'The upload is too large' : 'The form could not be read', e.message);
+      if (isForm) return formProblem(req, res, e.status, e.status === 413 ? 'The upload is too large' : `The ${what} could not be read`, e.message);
       json(res, e.status, { message: e.message });
       return;
     }
@@ -196,8 +204,8 @@ export class WebhookService {
     } catch (err) {
       // Configuration problems (e.g. missing credential): tell the caller without leaking internals.
       const message = err instanceof FlowError ? err.message : 'The request could not be processed.';
-      this.o.logger.warn(`${isForm ? 'Form' : 'Webhook'} "${reg.path}" of "${reg.workflow.name}" failed: ${message}`);
-      if (isForm) return formProblem(req, res, 500, 'This form is not set up correctly', message);
+      this.o.logger.warn(`${what[0]!.toUpperCase()}${what.slice(1)} "${reg.path}" of "${reg.workflow.name}" failed: ${message}`);
+      if (isForm) return formProblem(req, res, 500, `This ${what} is not set up correctly`, message);
       json(res, 500, { message, ...(err instanceof FlowError && err.hint ? { hint: err.hint } : {}) });
       return;
     }
@@ -298,10 +306,10 @@ export class WebhookService {
       }
       // lastNode: wait for the end of the execution.
       const detail = await started.done;
-      if (result.complete) return sendWebhookResponse(res, result.complete({ finished: true, status: detail.status, error: detail.error?.message }));
-      if (detail.status !== 'success') return this.finishWithoutResponse(res, detail, false);
       const runs = detail.lastNodeExecuted ? detail.runData[detail.lastNodeExecuted] : undefined;
       const items = runs?.[runs.length - 1]?.data.main[0] ?? [];
+      if (result.complete) return sendWebhookResponse(res, result.complete({ finished: true, status: detail.status, error: detail.error?.message, items: detail.status === 'success' ? items : [] }));
+      if (detail.status !== 'success') return this.finishWithoutResponse(res, detail, false);
       switch (result.lastNodeData ?? 'firstEntryJson') {
         case 'allEntries':
           return sendWebhookResponse(res, { statusCode: code, headers, body: items.map((i) => i.json) });

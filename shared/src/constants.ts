@@ -18,4 +18,5 @@ export const SERVER_ROUTE_PREFIXES = [
   '/form-test',
   '/form-waiting',
   '/chat',
+  '/chat-test',
 ] as const;

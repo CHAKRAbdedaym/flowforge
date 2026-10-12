@@ -2,14 +2,16 @@ import type { DisplayOptions, JsonObject, WorkflowNode } from '@flowforge/shared
 import { withDefaults } from '../engine/params.js';
 import type { CredentialsProvider, NodeType } from '../engine/types.js';
 
-/** Same rule as the editor: every `show` key must match, no `hide` key may match. */
+const listed = (list: unknown[], value: unknown) => (Array.isArray(value) ? value.some((v) => list.includes(v)) : list.includes(value));
+
+/** Same rule as the editor: every `show` key must match, no `hide` key may match (a multi-select matches on any entry). */
 export function matchesDisplayOptions(options: DisplayOptions | undefined, params: JsonObject): boolean {
   if (!options) return true;
   for (const [key, allowed] of Object.entries(options.show ?? {})) {
-    if (!allowed.includes(params[key])) return false;
+    if (!listed(allowed, params[key])) return false;
   }
   for (const [key, hidden] of Object.entries(options.hide ?? {})) {
-    if (hidden.includes(params[key])) return false;
+    if (listed(hidden, params[key])) return false;
   }
   return true;
 }

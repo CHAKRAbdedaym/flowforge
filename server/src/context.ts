@@ -5,6 +5,7 @@ import { CredentialTypeRegistry } from './credentials/registry.js';
 import { CredentialsService } from './credentials/service.js';
 import type { DB } from './db/index.js';
 import { CredentialsRepo } from './db/repositories/credentials.js';
+import { ChatMemoryRepo } from './db/repositories/chat-memory.js';
 import { SettingsRepo } from './db/repositories/settings.js';
 import { ExecutionsRepo } from './db/repositories/executions.js';
 import { SessionsRepo } from './db/repositories/sessions.js';
@@ -29,6 +30,7 @@ export interface AppContext {
   binaryStore: BinaryStore;
   credentials: CredentialsService;
   settings: InstanceSettingsService;
+  chatMemory: ChatMemoryRepo;
 }
 
 export function createContext(config: AppConfig, db: DB, logger: Logger, registry: NodeRegistry, options: { env?: NodeJS.ProcessEnv } = {}): AppContext {
@@ -51,5 +53,6 @@ export function createContext(config: AppConfig, db: DB, logger: Logger, registr
       env: options.env,
     }),
     settings: new InstanceSettingsService(new SettingsRepo(db)),
+    chatMemory: new ChatMemoryRepo(db),
   };
 }

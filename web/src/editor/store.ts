@@ -111,6 +111,8 @@ export interface EditorState {
   paletteOpen: boolean;
   helpOpen: boolean;
   logOpen: boolean;
+  /** Test chat of a Chat Trigger (floating panel on the canvas). */
+  chatOpen: boolean;
   clipboard: string | null;
 }
 
@@ -141,6 +143,7 @@ const initial = (): EditorState => ({
   paletteOpen: false,
   helpOpen: false,
   logOpen: false,
+  chatOpen: false,
   clipboard: null,
 });
 
@@ -447,7 +450,7 @@ export const editor = {
     set({ creator: { open: false } });
   },
 
-  setUi(patch: Partial<Pick<EditorState, 'paletteOpen' | 'helpOpen' | 'logOpen' | 'settingsOpen'>>) {
+  setUi(patch: Partial<Pick<EditorState, 'paletteOpen' | 'helpOpen' | 'logOpen' | 'settingsOpen' | 'chatOpen'>>) {
     set(patch);
   },
 

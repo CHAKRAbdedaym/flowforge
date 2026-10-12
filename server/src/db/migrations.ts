@@ -125,6 +125,20 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_credentials_type ON credentials(type, created_at);
     `,
   },
+  {
+    id: 6,
+    name: 'chat_memory',
+    sql: `
+      CREATE TABLE chat_memory (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_key TEXT NOT NULL,
+        role        TEXT NOT NULL,
+        content     TEXT NOT NULL,
+        created_at  TEXT NOT NULL
+      );
+      CREATE INDEX idx_chat_memory_session ON chat_memory(session_key, id);
+    `,
+  },
 ];
 
 export function runMigrations(db: DB, migrations: Migration[] = MIGRATIONS): number {

@@ -87,14 +87,14 @@
 - [x] P0 Schedule Trigger: interval rules (seconds → months) (Ph 3) — test: `server/tests/triggers.test.ts`; manual: curl guide E
 - [x] P0 Schedule Trigger: cron expression (with seconds) + workflow timezone (Ph 3) — test: `server/tests/triggers.test.ts`
 - [x] P0 Form Trigger (see Integrations → Form) (Ph 3B) — test: `server/tests/forms.test.ts`; e2e: `editor-credentials-form.spec.ts`
-- [ ] P0 Telegram Trigger, long polling, no public URL needed (Ph 5)
+- [x] P0 Telegram Trigger, long polling, no public URL needed (Ph 5) — test: `telegram-hub.test.ts`, `telegram.test.ts`, `examples.test.ts` (local mock of the Bot API). **Not verified with a real key (none available to me): run `npm run check`.**
 - [x] P0 Error Trigger (Ph 3) — test: `server/tests/triggers.test.ts`
 - [x] P0 Execute Workflow Trigger (Ph 3) — test: `server/tests/triggers.test.ts`
-- [ ] P2 Chat Trigger: hosted chat page + in-editor chat panel (Ph 5)
+- [x] P2 Chat Trigger: mobile-first chat page `/chat/:id` (QR code, session id, history kept in the browser) + chat panel in the editor; the reply is the output of the last node (Ph 5) — test: `chat.test.ts`; e2e: `web/e2e/editor-chat.spec.ts` (editor panel, then the page at phone size with a mock Gemini); manual: screenshots of the page (390 px) and the panel
 - [x] P2 Local File Trigger (add/change/delete, ignore patterns, restricted to `./data/files`) (Ph 3) — test: `server/tests/triggers.test.ts`
 - [x] P2 RSS Feed Trigger (Ph 3) — test: `server/tests/triggers.test.ts` (local feed server)
 - [x] P2 HTTP polling trigger with dedupe (key field or SHA-256, LRU 5000, baseline on first run) (Ph 3) — test: `server/tests/triggers.test.ts`
-- [ ] P2 Test mode "Listen for test event" for every trigger type (Ph 3/5) — done and tested for webhook, form (5 minutes, `forms.test.ts`), schedule, RSS / HTTP poll, file trigger (`triggers.test.ts`, e2e); Telegram and Chat come in Ph 5
+- [x] P2 Test mode "Listen for test event" for every trigger type (Ph 3/5) — webhook, form (5 minutes, `forms.test.ts`), schedule, RSS / HTTP poll, file trigger (`triggers.test.ts`, e2e), Telegram (`telegram.test.ts`: one update, then the listener closes), Chat (`chat.test.ts`: one message per listen, used by the editor chat panel)
 
 - [x] P0 Public routes are safe: rate limit per IP, body size limit (413), path length limit, malformed URLs → 4xx, never crash (Ph 3) — test: `server/tests/webhook.test.ts`
 - [x] P2 Workflow settings dialog: error workflow, timezone, execution timeout, save production runs (Ph 3) — e2e: `editor-triggers.spec.ts`
@@ -170,18 +170,21 @@
 - [x] P0 Wait node "On Form Submitted" uses the same builder, themes and page (replaces the JSON editing of Ph 3) (Ph 3B) — test: `forms.test.ts` (Wait node form), `triggers.test.ts`; e2e
 - [x] P0 Example "Contact form → emails": form → admin notification + designed confirmation to the submitter → confirmation page, importable from Workflows → Examples (Ph 3B) — test: `forms.test.ts` (example); e2e: import
 ### 3. Telegram
-- [ ] P0 Telegram credential (bot token) with Test button (`getMe`) (Ph 5)
-- [ ] P0 Telegram: send message (text, Markdown/HTML parse mode) (Ph 5)
-- [ ] P0 Telegram Trigger (long polling via shared TelegramHub) (Ph 5)
+- [x] P0 Telegram credential (bot token, default chat id) with Test button (`getMe`), `.env` fallback `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` (Ph 5) — test: `telegram.test.ts`, `check.test.ts`; manual: a wrong token against the real Telegram API gives "Telegram rejected the bot token". **Not verified with a real key (none available to me): run `npm run check`.**
+- [x] P0 Telegram: send message (text, HTML / Markdown / MarkdownV2, inline keyboard with callback and URL buttons) (Ph 5) — test: `telegram.test.ts` (payloads, default chat id, 400 parse error, 401, 429 retry, timeout, malformed answer, token never in results or logs). **Not verified with a real key (none available to me): run `npm run check`.**
+- [x] P1 Telegram: send photo / document (binary upload or URL), edit message text, delete message, answer callback query, get chat (Ph 5) — test: `telegram.test.ts` (multipart upload checked byte for byte). **Not verified with a real key (none available to me): run `npm run check`.**
+- [x] P0 Telegram Trigger (long polling via shared TelegramHub): ONE poller per bot shared by all workflows, `getUpdates` timeout 25 s, offset kept in static data, exponential backoff, `deleteWebhook` first, command filter (`/weather Paris` ⇒ `command`, `args`), chat / user allow lists, clear message when another program polls the bot (409) (Ph 5) — test: `telegram-hub.test.ts` (max 1 concurrent `getUpdates` for 2 subscribers and for 2 active workflows, offset persistence, backlog skipped, backoff + recovery, clean shutdown, no duplicates after activating twice). **Not verified with a real key (none available to me): run `npm run check`.**
 ### 4. Discord
-- [ ] P0 Discord webhook credential with Test button (Ph 5)
-- [ ] P0 Discord: message with rich embeds (title, description, color, fields, footer, image, timestamp) (Ph 5)
+- [x] P0 Discord webhook credential with Test button (GET, posts nothing), `.env` fallback `DISCORD_WEBHOOK_URL` (Ph 5) — test: `discord.test.ts`, `check.test.ts`; manual: an unknown webhook against the real Discord API gives "Discord does not accept this webhook (Unknown Webhook)". **Not verified with a real key (none available to me): run `npm run check`.**
+- [x] P0 Discord: message with content, username, avatar and rich embeds (title, description, URL, color, author, fields, footer, thumbnail, image, timestamp), `?wait=true`, threads; 2000 character / 10 embed / 6000 total limits checked before sending (option: truncate); 429 honours `retry_after` (Ph 5) — test: `discord.test.ts`, `examples.test.ts`. **Not verified with a real key (none available to me): run `npm run check`.**
+- [x] P1 Discord: edit, delete and get a message sent by the webhook (Ph 5) — test: `discord.test.ts`. **Not verified with a real key (none available to me): run `npm run check`.**
 ### 5. Open-Meteo
-- [ ] P0 Weather node: current + daily forecast by coordinates (Ph 5)
-- [ ] P0 Geocoding by city name (no key needed) (Ph 5)
+- [x] P0 Weather node: current, daily and hourly forecast by city or coordinates, units (°C/°F, km/h, m/s, mph, kn, mm/inch), time zone, weather-code text + emoji, one-line readable summary (Ph 5) — test: `open-meteo.test.ts` (mock), `examples.test.ts`; manual: **real Open-Meteo call** from the editor's server (Casablanca) and in `npm run check` (Paris)
+- [x] P0 Geocoding by city name, also "City, Country" (no key needed) + Search Location operation (Ph 5) — test: `open-meteo.test.ts`; manual: real calls (`Paris, Texas`, `Springfield, IL`, `Casablanca, Morocco`)
 ### 6. Google Gemini
-- [ ] P0 Gemini credential (API key) with Test button (Ph 5)
-- [ ] P0 Gemini chat node (prompt, system instruction, model choice) (Ph 5)
+- [x] P0 Gemini credential (API key in the `x-goog-api-key` header, default model) with Test button (tiny prompt), `.env` fallback `GEMINI_API_KEY` / `GEMINI_MODEL` (Ph 5) — test: `gemini.test.ts`, `check.test.ts`; manual: a wrong key against the real Gemini API gives "The Gemini API key is not valid". **Not verified with a real key (none available to me): run `npm run check`.**
+- [x] P0 Gemini node: prompt, system instruction, model choice (default `gemini-3.8-flash`), temperature, max output tokens, top P / K, JSON mode (parsed `json` output), images from binary data, retries on 429 / 500 / 503, clear errors for 400 / 403 / 404 / 429 / safety blocks / empty answers (Ph 5) — test: `gemini.test.ts` (mock). **Not verified with a real key (none available to me): run `npm run check`.**
+- [x] P1 Gemini conversation memory per chat session (table `chat_memory`, scoped per workflow) (Ph 5) — test: `chat.test.ts`, `examples.test.ts`; e2e: `web/e2e/editor-chat.spec.ts`
 
 ## AI (P1)
 - [ ] P1 AI Agent with Gemini chat model sub-node (Ph 6)
@@ -211,7 +214,8 @@
 - [ ] P0 README: Teacher demo script (exact 5-minute click sequence) (Ph 8)
 - [ ] P0 README: Cloudflare quick tunnel fallback (`cloudflared tunnel --url http://localhost:5679`) (Ph 8) — section "Open FlowForge from a phone" written in Ph 3B; not yet tried with a real tunnel
 - [ ] P0 README: Fedora firewall command to reach the app from a phone (Ph 8) — written in Ph 3B (Fedora, Ubuntu, Windows, macOS); not yet tried from a real phone
-- [ ] P0 `.env.example` (Ph 0, completed in Ph 5)
-- [ ] P0 API_SETUP.md for the 6 integrations (links, steps, free limits, `.env` name + Credentials UI field, how to verify) (Ph 5) — Email (Gmail App Password, Brevo), Form and Webhook authentication written in Ph 3B
-- [ ] P0 `npm run check`: real call per integration, OK / FAIL / SKIP with reason (Ph 5)
-- [ ] P0 `/examples`: 8 importable workflows (Ph 8) — 1 of 8 so far: `examples/form-to-email.json` (Ph 3B)
+- [x] P0 `.env.example` with every variable commented (Ph 0, completed in Ph 5) — test: `check.test.ts` and the integration tests read the same variable names through the `.env` fallback
+- [x] P0 API_SETUP.md for the 6 integrations (links, steps, free limits or "not verified", `.env` name + Credentials page field, how to verify, troubleshooting table) (Ph 5) — manual: every link opened (HTTP 200), endpoints and limits taken from the official docs on 2026-10-12. The steps inside Telegram, Discord and AI Studio were **not walked through by me** (no account)
+- [x] P0 `need.md`: checklist of everything to provide (summary table, keys one by one, machine, first run, `.env` template, demo-day checklist, top 10 problems) (Ph 5) — manual: read against the code (variable names, credential field names, startup banner, menu labels). To be updated in the final phase
+- [x] P0 `npm run check`: real call per integration (SMTP verify + email to `CHECK_EMAIL_TO`, forms self-test on a private server, Telegram `getMe` + message to `TELEGRAM_CHAT_ID`, Discord GET / `--send`, Open-Meteo Paris, Gemini "Reply OK"), table of OK / FAIL (reason) / SKIP (what to set where), exit code 1 on FAIL, never prints secrets; uses the same `test()` as the Test buttons (Ph 5) — test: `check.test.ts` (mocks); manual: real run without keys (Forms OK, Open-Meteo OK, 4 SKIP, exit 0) and with wrong keys against the real services (3 FAIL with the right reason, exit 1, no secret printed). **The OK path with real keys is not verified by me.**
+- [ ] P0 `/examples`: 8 importable workflows (Ph 8) — 5 of 8 so far: form → emails (Ph 3B); daily weather → HTML email, contact form → Discord embed + email, Telegram `/weather` assistant, website chatbot with Gemini (Ph 5, each imported and run end to end against the mocks in `examples.test.ts`)

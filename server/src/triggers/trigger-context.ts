@@ -1,6 +1,7 @@
 import type { Item, JsonObject, WorkflowData, WorkflowNode } from '@flowforge/shared';
 import { getPath, withDefaults } from '../engine/params.js';
-import type { NodeType, TriggerContext } from '../engine/types.js';
+import { NodeOperationError } from '../engine/errors.js';
+import type { CredentialsProvider, NodeType, TriggerContext } from '../engine/types.js';
 import type { Logger } from '../logger.js';
 
 export interface TriggerContextOptions {
@@ -14,6 +15,9 @@ export interface TriggerContextOptions {
   staticData: Record<string, Record<string, unknown>>;
   emit(items: Item[]): void;
   emitError(error: Error): void;
+  credentials?: CredentialsProvider;
+  /** Persists `staticData` right away (active workflows only). */
+  saveStaticData?(): void;
 }
 
 export function createTriggerContext(o: TriggerContextOptions): TriggerContext {
@@ -32,5 +36,10 @@ export function createTriggerContext(o: TriggerContextOptions): TriggerContext {
     emit: o.emit,
     emitError: o.emitError,
     getStaticData: () => (o.staticData[o.node.name] ??= {}),
+    saveStaticData: () => o.saveStaticData?.(),
+    getCredentials: (type) => {
+      if (!o.credentials) throw new NodeOperationError('Credentials are not available for this trigger');
+      return o.credentials.resolve(o.node, type);
+    },
   };
 }

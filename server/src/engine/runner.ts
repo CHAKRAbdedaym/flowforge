@@ -26,7 +26,7 @@ import {
 import type { ExpressionEngine } from './expressions/engine.js';
 import { WorkflowGraph } from './graph.js';
 import { NodeExecutionContext, type ExecutionServices } from './node-context.js';
-import type { CredentialsProvider, NodeType } from './types.js';
+import type { ChatMemoryStore, ChatTurn, CredentialsProvider, NodeType } from './types.js';
 
 export interface RunHooks {
   nodeStarted?(nodeName: string, runIndex: number): void;
@@ -80,6 +80,8 @@ export interface RunnerDeps {
   filesRoot?: string;
   /** Switches of the Settings page (e.g. Execute Command). */
   instanceSettings?: { get(key: string): unknown };
+  /** Chat sessions (absent in plain engine tests: memory then lives only for the lifetime of the runner). */
+  chatMemory?: ChatMemoryStore;
 }
 
 interface Task {
@@ -119,6 +121,16 @@ class StopExecution extends Error {
 }
 
 const MANUAL_TRIGGER = 'flowforge.manualTrigger';
+
+/** Fallback store when no database is attached (engine tests). */
+function inMemoryChatStore(): ChatMemoryStore {
+  const sessions = new Map<string, ChatTurn[]>();
+  return {
+    load: (key, limit) => (limit > 0 ? (sessions.get(key) ?? []).slice(-limit) : []),
+    append: (key, turns) => void sessions.set(key, [...(sessions.get(key) ?? []), ...turns]),
+    clear: (key) => void sessions.delete(key),
+  };
+}
 
 function raceAbort<T>(work: () => Promise<T> | T, signal: AbortSignal): Promise<T> {
   if (signal.aborted) return Promise.reject(signal.reason);
@@ -193,7 +205,11 @@ interface Live {
  * A Wait node can pause the run: the state is returned and `run({ resume })` continues it later.
  */
 export class WorkflowRunner {
-  constructor(private readonly deps: RunnerDeps) {}
+  private readonly chatMemory: ChatMemoryStore;
+
+  constructor(private readonly deps: RunnerDeps) {
+    this.chatMemory = deps.chatMemory ?? inMemoryChatStore();
+  }
 
   async run(req: RunRequest): Promise<RunResult> {
     const controller = new AbortController();
@@ -482,6 +498,7 @@ export class WorkflowRunner {
         credentials: this.deps.credentials,
         filesRoot: this.deps.filesRoot,
         instanceSettings: this.deps.instanceSettings,
+        chatMemory: this.chatMemory,
       });
       try {
         const raw = await raceAbort(() => type.execute!(ctx), signal);

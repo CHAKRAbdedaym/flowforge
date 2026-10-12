@@ -215,6 +215,8 @@ export class ActiveWorkflowManager {
           this.o.executions.start({ workflow, mode: type.description.trigger?.kind === 'schedule' ? 'schedule' : 'trigger', startNode: node.name, triggerItems: items });
         },
         emitError: (err) => this.reportError(id, node.name, err),
+        credentials: this.o.credentials,
+        saveStaticData: () => this.o.workflows.setStaticData(id, entry.staticData),
       });
 
     // 1. Validate everything (nothing is started if one trigger is misconfigured).
@@ -230,7 +232,7 @@ export class ActiveWorkflowManager {
           const path = normalizePath(rawPath);
           const conflict = this.o.webhooks.findConflict(methods, path, id, node.name, spec.urlPrefix);
           if (conflict) {
-            const what = spec.urlPrefix === 'form' ? 'form' : 'webhook';
+            const what = spec.urlPrefix;
             throw new ActivationError(`The ${what} path "${path}" (${methods.join(', ')}) is already used by the active workflow "${conflict.workflow.name}"`, 'Change the path or the HTTP method.');
           }
           starters.push(async () => {
@@ -266,7 +268,7 @@ export class ActiveWorkflowManager {
     } catch (err) {
       for (const close of entry.closers) await Promise.resolve(close()).catch(() => undefined);
       this.o.webhooks.removeWorkflow('prod', id);
-      throw new ActivationError(err instanceof Error ? err.message : String(err));
+      throw new ActivationError(err instanceof Error ? err.message : String(err), err instanceof FlowError ? err.hint : undefined);
     }
     this.active.set(id, entry);
     this.o.workflows.setActive(id, true);

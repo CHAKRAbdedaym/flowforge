@@ -22,11 +22,14 @@ export function withDefaults(properties: NodeProperty[], values: Values): Values
  * n8n-style displayOptions: `show` = every listed field must have one of the values,
  * `hide` = hidden if any listed field matches. "/name" refers to a top-level parameter.
  */
+/** A multi-select value (array) matches when at least one of its entries is listed. */
+const listed = (list: unknown[], value: unknown) => (Array.isArray(value) ? value.some((v) => list.includes(v)) : list.includes(value));
+
 export function isVisible(prop: NodeProperty, level: Values, root: Values): boolean {
   const lookup = (key: string) => (key.startsWith('/') ? root[key.slice(1)] : key in level ? level[key] : root[key]);
   const { show, hide } = prop.displayOptions ?? {};
-  if (show && !Object.entries(show).every(([key, allowed]) => allowed.includes(lookup(key)))) return false;
-  if (hide && Object.entries(hide).some(([key, blocked]) => blocked.includes(lookup(key)))) return false;
+  if (show && !Object.entries(show).every(([key, allowed]) => listed(allowed, lookup(key)))) return false;
+  if (hide && Object.entries(hide).some(([key, blocked]) => listed(blocked, lookup(key)))) return false;
   return true;
 }
 

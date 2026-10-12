@@ -10,6 +10,10 @@ describe('displayOptions', () => {
   it('show / hide rules, with defaults and "/root" references', () => {
     expect(isVisible(prop({ show: { mode: ['raw'] } }), { mode: 'raw' }, {})).toBe(true);
     expect(isVisible(prop({ show: { mode: ['raw'] } }), { mode: 'manual' }, {})).toBe(false);
+    // Multi-select values (arrays) match when one of their entries is listed.
+    expect(isVisible(prop({ show: { include: ['daily', 'hourly'] } }), { include: ['current', 'daily'] }, {})).toBe(true);
+    expect(isVisible(prop({ show: { include: ['hourly'] } }), { include: ['current', 'daily'] }, {})).toBe(false);
+    expect(isVisible(prop({ hide: { include: ['hourly'] } }), { include: ['hourly'] }, {})).toBe(false);
     expect(isVisible(prop({ show: { mode: ['combine'], combineBy: ['fields'] } }), { mode: 'combine', combineBy: 'fields' }, {})).toBe(true);
     expect(isVisible(prop({ hide: { mode: ['raw'] } }), { mode: 'raw' }, {})).toBe(false);
     expect(isVisible(prop({ show: { renameOutput: [true] } }), { renameOutput: true }, {})).toBe(true);

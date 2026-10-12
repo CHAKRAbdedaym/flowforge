@@ -16,12 +16,15 @@ export function WebhookUrls({ property }: { property: NodeProperty }) {
   const { nodeName } = useNodeEdit();
   const node = useEditor((s) => s.nodes.find((n) => n.name === nodeName));
   const info = useQuery({ queryKey: ['system', 'info'], queryFn: () => api<SystemInfo>('/system/info'), staleTime: 60_000 });
-  const [tab, setTab] = useState<'test' | 'production'>('test');
+  const isChat = property.typeOptions?.urlPrefix === 'chat';
+  // A chat is tested in the editor's chat panel: only its public URL is shown.
+  const [tab, setTab] = useState<'test' | 'production'>(isChat ? 'production' : 'test');
   const [qr, setQr] = useState(false);
   const active = useEditor((s) => s.active);
   if (!node) return null;
   const prefix = property.typeOptions?.urlPrefix ?? 'webhook';
-  const isForm = prefix === 'form';
+  const isForm = prefix === 'form' || isChat;
+  const what = isChat ? 'chat' : 'form';
   const params = node.parameters as { path?: string; httpMethod?: string; options?: { path?: string } };
   const path = String((isForm ? params.options?.path : params.path) || node.webhookId || node.id)
     .trim()
@@ -32,7 +35,7 @@ export function WebhookUrls({ property }: { property: NodeProperty }) {
     <div className="flex flex-col gap-1.5 rounded-md border border-line bg-panel-2/60 p-2.5" data-testid="webhook-urls">
       <div className="flex items-center gap-1">
         <span className="mr-auto text-[12.5px] font-medium text-muted">{property.displayName}</span>
-        {(['test', 'production'] as const).map((t) => (
+        {(isChat ? (['production'] as const) : (['test', 'production'] as const)).map((t) => (
           <button
             key={t}
             type="button"
@@ -54,7 +57,7 @@ export function WebhookUrls({ property }: { property: NodeProperty }) {
             <button type="button" title="Show the QR code" data-testid="form-qr-button" onClick={() => setQr(true)} className="rounded-md border border-line bg-panel-2 p-1.5 text-muted hover:border-accent hover:text-fg">
               <QrCode size={15} />
             </button>
-            <a href={sameOriginPath(url)} target="_blank" rel="noreferrer" title="Open the form" data-testid="form-open" className="rounded-md border border-line bg-panel-2 p-1.5 text-muted hover:border-accent hover:text-fg">
+            <a href={sameOriginPath(url)} target="_blank" rel="noreferrer" title={`Open the ${what}`} data-testid="form-open" className="rounded-md border border-line bg-panel-2 p-1.5 text-muted hover:border-accent hover:text-fg">
               <ExternalLink size={15} />
             </a>
           </>
@@ -63,15 +66,19 @@ export function WebhookUrls({ property }: { property: NodeProperty }) {
       {isForm ? (
         <div className="flex items-start gap-3">
           <button type="button" onClick={() => setQr(true)} title="Show a large QR code" className="shrink-0 rounded-lg bg-white p-1.5 transition-transform hover:scale-105" data-testid="form-qr-thumb">
-            <img src={qrSrc(url, 240)} alt="QR code of the form" width={84} height={84} className="block size-[84px]" />
+            <img src={qrSrc(url, 240)} alt={`QR code of the ${what}`} width={84} height={84} className="block size-[84px]" />
           </button>
           <div className="flex min-w-0 flex-col gap-1.5">
             <p className="text-[11.5px] text-subtle" data-testid="form-url-status">
-              {tab === 'test'
-                ? 'Test URL: works for one submission after clicking "Listen for test event" (5 minutes). The run shows live in the editor.'
-                : active
-                  ? 'Production URL: the workflow is active, the form is online.'
-                  : 'Production URL: works once the workflow is saved and switched to Active.'}
+              {isChat
+                ? active
+                  ? 'The workflow is active: the chat page is online. Scan the QR code with a phone.'
+                  : 'The chat page works once the workflow is saved and switched to Active. To test now, use the Chat button on the canvas.'
+                : tab === 'test'
+                  ? 'Test URL: works for one submission after clicking "Listen for test event" (5 minutes). The run shows live in the editor.'
+                  : active
+                    ? 'Production URL: the workflow is active, the form is online.'
+                    : 'Production URL: works once the workflow is saved and switched to Active.'}
             </p>
             <ReachHint info={info.data} />
           </div>
@@ -86,10 +93,10 @@ export function WebhookUrls({ property }: { property: NodeProperty }) {
       {qr && (
         <QrDialog
           url={url}
-          title={`${String((node.parameters as { formTitle?: string }).formTitle || 'Form')} (${tab})`}
+          title={isChat ? String((node.parameters as { title?: string }).title || 'Chat') : `${String((node.parameters as { formTitle?: string }).formTitle || 'Form')} (${tab})`}
           openHref={sameOriginPath(url)}
-          fileName={`form-qr-${tab}`}
-          note={tab === 'test' ? 'Test URL: click "Listen for test event" first. It accepts one submission.' : active ? undefined : 'The production URL works once the workflow is Active.'}
+          fileName={`${what}-qr-${tab}`}
+          note={!isChat && tab === 'test' ? 'Test URL: click "Listen for test event" first. It accepts one submission.' : active ? undefined : 'The production URL works once the workflow is Active.'}
           onClose={() => setQr(false)}
         />
       )}

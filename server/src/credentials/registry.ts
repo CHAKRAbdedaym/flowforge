@@ -1,12 +1,15 @@
 import type { CredentialTypeInfo, CredentialValue } from '@flowforge/shared';
+import discordWebhookApi from './discord-webhook-api.credential.js';
+import googlePalmApi from './google-gemini-api.credential.js';
 import httpBasicAuth from './http-basic-auth.credential.js';
 import httpBearerAuth from './http-bearer-auth.credential.js';
 import httpHeaderAuth from './http-header-auth.credential.js';
 import httpQueryAuth from './http-query-auth.credential.js';
 import smtp from './smtp.credential.js';
+import telegramApi from './telegram-api.credential.js';
 import type { CredentialData, CredentialType } from './types.js';
 
-const TYPES: CredentialType[] = [smtp, httpBasicAuth, httpBearerAuth, httpHeaderAuth, httpQueryAuth];
+const TYPES: CredentialType[] = [smtp, telegramApi, discordWebhookApi, googlePalmApi, httpBasicAuth, httpBearerAuth, httpHeaderAuth, httpQueryAuth];
 
 export class CredentialTypeRegistry {
   private readonly types = new Map<string, CredentialType>();

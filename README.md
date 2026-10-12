@@ -67,6 +67,25 @@ execution id immediately, `startNode=<trigger>` picks the trigger. Full details:
 - **Execute Command** runs shell commands on this computer. It is **disabled by default**: switch it on in
   **Settings → Security** only if you need it.
 
+## Integrations: Telegram, Discord, Gemini, weather, chat
+
+| Node | Needs | Setup |
+|---|---|---|
+| **Telegram**, **Telegram Trigger** | A bot token from @BotFather | [API_SETUP.md#telegram](API_SETUP.md#telegram) |
+| **Discord** | A channel webhook URL | [API_SETUP.md#discord](API_SETUP.md#discord) |
+| **Google Gemini** | A free API key from Google AI Studio | [API_SETUP.md#google-gemini](API_SETUP.md#google-gemini) |
+| **Weather (Open-Meteo)** | Nothing | [API_SETUP.md#weather-open-meteo](API_SETUP.md#weather-open-meteo) |
+| **Chat Trigger** | Nothing (a chat page + a test chat in the editor) | [API_SETUP.md#chat](API_SETUP.md#chat) |
+
+- **[need.md](need.md)** is the checklist of everything to prepare (keys, machine, first run, demo day).
+- `npm run check` makes one real call per integration and prints `OK`, `FAIL` (with the reason) or `SKIP`
+  (with what to set where). Add `-- --send` to also post a test message in Discord.
+- A node without its key shows a clear error with an **Open Credentials** button. It never crashes.
+- **Workflows → Examples** has five ready workflows: contact form → emails, contact form → Discord + email,
+  daily weather email, Telegram `/weather` assistant, website chatbot with Gemini.
+- The Telegram Trigger uses long polling: no public URL is needed. Only one program can read a bot, so do not
+  use the same bot in n8n at the same time.
+
 ## Open FlowForge from a phone
 
 Forms, webhooks and QR codes use the **public URL** shown at startup (`➜ Network: http://192.168.x.x:5679`).
@@ -110,6 +129,8 @@ Every form URL and QR code now uses that address. The address changes each time 
   credential and type its values again (always back up that file together with `data/flowforge.db`).
 - **Emails are not sent**: run `npm run check:email`. The table in [API_SETUP.md](API_SETUP.md#how-to-verify)
   explains each message.
+- **An integration does not work**: run `npm run check`, then see the table in
+  [API_SETUP.md](API_SETUP.md#troubleshooting).
 - **The phone cannot open a form**: see [Open FlowForge from a phone](#open-flowforge-from-a-phone).
 
 ## Commands
@@ -120,5 +141,6 @@ Every form URL and QR code now uses that address. The address changes each time 
 | `npm run dev` | Development mode with hot reload: open http://localhost:5173 |
 | `npm test` | Type checks + automated tests (offline) |
 | `npm run test:e2e` | Browser tests. Use your installed Chrome with `PW_CHANNEL=chrome npm run test:e2e`, or download Playwright's browser once with `npx playwright install chromium` |
+| `npm run check` | One real call per integration (email, forms, Telegram, Discord, weather, Gemini): OK / FAIL / SKIP. `-- --send` also posts to Discord |
 | `npm run check:email` | Sends a real test email with your SMTP credential (or `.env`) and prints OK / FAIL with the reason. Add `-- someone@example.com` to choose the recipient |
 | `npm run user:reset` | Forgot the password? Deletes user accounts so you can create a new owner (workflows are kept) |

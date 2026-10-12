@@ -94,15 +94,47 @@ export async function stopListening() {
   if (id) await cancelTestListen(id).catch(() => undefined);
 }
 
-/** Like n8n: with a Manual Trigger run now; otherwise listen on (or fire) the first trigger. */
+export const CHAT_TRIGGER = 'flowforge.chatTrigger';
+
+/** The (first enabled) Chat Trigger of the workflow, if any. */
+export const chatTriggerName = (nodes: { name: string; type: string; disabled?: boolean }[]) => nodes.find((n) => n.type === CHAT_TRIGGER && !n.disabled)?.name;
+
+/**
+ * One message of the editor's test chat: listens on the Chat Trigger (single shot), posts the message to its
+ * test URL and returns the reply. The run shows live on the canvas like any other test event.
+ */
+export async function sendChatMessage(nodeName: string, sessionId: string, chatInput: string): Promise<string> {
+  const s = useEditor.getState();
+  if (!s.workflowId) throw new Error('Save the workflow first.');
+  const res = await testListen(s.workflowId, { workflow: workflowData(), nodeName });
+  if (res.kind !== 'webhook' || !res.testUrl) throw new Error('This trigger cannot receive chat messages.');
+  // Same origin as the editor (the public URL may be the LAN address).
+  const url = new URL(res.testUrl);
+  const answer = await fetch(`${url.pathname}${url.search}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ action: 'sendMessage', sessionId, chatInput }),
+  });
+  const body = (await answer.json().catch(() => ({}))) as { output?: unknown; message?: unknown };
+  if (!answer.ok) throw new Error(typeof body.message === 'string' ? body.message : `The chat answered ${answer.status}.`);
+  return String(body.output ?? '');
+}
+
+/** Like n8n: with a Manual Trigger run now; with a Chat Trigger open the chat; otherwise listen on (or fire) the first trigger. */
 export function executeWorkflow() {
   const s = useEditor.getState();
   const triggers = s.nodes.filter((n) => !n.disabled && triggerKind(n.name));
   if (triggers.length === 0 || triggers.some((n) => triggerKind(n.name) === 'manual')) return start();
+  if (triggers[0]!.type === CHAT_TRIGGER) return editor.setUi({ chatOpen: true });
   return listenForTestEvent(triggers[0]!.name);
 }
 
 export const executeStep = (nodeName: string) => {
+  if (useEditor.getState().nodes.find((n) => n.name === nodeName)?.type === CHAT_TRIGGER) {
+    // A chat is tested by chatting: close the node panel and open the test chat.
+    editor.openPanel(null);
+    return editor.setUi({ chatOpen: true });
+  }
   const kind = triggerKind(nodeName);
   return kind && kind !== 'manual' ? listenForTestEvent(nodeName) : start(nodeName);
 };

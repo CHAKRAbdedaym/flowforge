@@ -8,6 +8,11 @@ import type { ExecuteContext } from '../../engine/types.js';
 export const MAX_RESPONSE_BYTES = 100 * 1024 * 1024;
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 
+// One connection pool for every node: connections are reused for a while (a bot that answers several messages does
+// not pay the TLS handshake each time) and a slow network gets 30 s to connect (the request timeout still applies).
+const CONNECT = { timeout: 30_000 };
+const POOL = { keepAliveTimeout: 15_000, keepAliveMaxTimeout: 60_000 };
+const defaultAgent = new Agent({ ...POOL, connect: CONNECT });
 let insecureAgent: Agent | undefined;
 
 export interface HttpSendOptions {
@@ -99,7 +104,7 @@ export async function httpSend(o: HttpSendOptions): Promise<HttpResult> {
   let headers = { ...o.headers };
   const timeout = AbortSignal.timeout(Math.max(1, o.timeoutMs));
   const signal = AbortSignal.any([o.signal, timeout]);
-  if (o.ignoreSsl) insecureAgent ??= new Agent({ connect: { rejectUnauthorized: false } });
+  if (o.ignoreSsl) insecureAgent ??= new Agent({ ...POOL, connect: { ...CONNECT, rejectUnauthorized: false } });
 
   for (let hop = 0; ; hop++) {
     let res: Response;
@@ -111,7 +116,7 @@ export async function httpSend(o: HttpSendOptions): Promise<HttpResult> {
         body: method === 'GET' || method === 'HEAD' ? undefined : body,
         redirect: 'manual',
         signal,
-        ...(o.ignoreSsl ? { dispatcher: insecureAgent } : {}),
+        dispatcher: o.ignoreSsl ? insecureAgent : defaultAgent,
         ...(body && typeof (body as { pipe?: unknown }).pipe === 'function' ? { duplex: 'half' as const } : {}),
       });
       const location = res.headers.get('location');

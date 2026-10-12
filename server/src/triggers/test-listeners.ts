@@ -1,6 +1,7 @@
 import type { TestListenResponse, WorkflowData } from '@flowforge/shared';
 import { checkNodeCredentials } from '../credentials/check.js';
 import type { ExecutionService } from '../engine/execution-service.js';
+import { FlowError } from '../engine/errors.js';
 import { withDefaults } from '../engine/params.js';
 import type { CredentialsProvider, TriggerHandle } from '../engine/types.js';
 import type { Logger } from '../logger.js';
@@ -128,6 +129,7 @@ export class TestListeners {
         timezone: workflow.settings?.timezone || this.o.timezone,
         filesRoot: this.o.filesRoot,
         staticData: {},
+        credentials: this.o.credentials,
         emit: () => undefined,
         emitError: () => undefined,
       });
@@ -167,6 +169,7 @@ export class TestListeners {
         timezone: workflow.settings?.timezone || this.o.timezone,
         filesRoot: this.o.filesRoot,
         staticData: {},
+        credentials: this.o.credentials,
         emit: (items) => {
           if (done) return;
           const executionId = runNow(items);
@@ -183,7 +186,7 @@ export class TestListeners {
         handle = await type.trigger(ctx);
       } catch (err) {
         clearTimeout(timer);
-        throw new TestListenError((err as Error).message);
+        throw new TestListenError((err as Error).message, err instanceof FlowError ? err.hint : undefined);
       }
       this.current.set(workflow.id, listener);
       this.o.ws?.broadcast('trigger.listening', { workflowId: workflow.id, nodeName: node.name, expiresAt: expiresAt.toISOString() });

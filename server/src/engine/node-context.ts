@@ -5,7 +5,7 @@ import { CredentialError, NodeOperationError, WaitSignal, toFlowError } from './
 import type { ExpressionEngine, ExpressionScope } from './expressions/engine.js';
 import { getDefault, getPath, isNoExpression } from './params.js';
 import { resolvePairedItem } from './paired-items.js';
-import type { CredentialsProvider, ExecuteContext, NodeHelpers, NodeType, ResolvedCredential, SubWorkflowRequest, WebhookResponse } from './types.js';
+import type { ChatMemory, ChatMemoryStore, CredentialsProvider, ExecuteContext, NodeHelpers, NodeType, ResolvedCredential, SubWorkflowRequest, WebhookResponse } from './types.js';
 
 /** Capabilities the execution service gives to nodes (absent in plain test runs). */
 export interface ExecutionServices {
@@ -37,6 +37,7 @@ export interface NodeContextOptions {
   credentials?: CredentialsProvider;
   filesRoot?: string;
   instanceSettings?: { get(key: string): unknown };
+  chatMemory?: ChatMemoryStore;
 }
 
 export class NodeExecutionContext implements ExecuteContext {
@@ -207,6 +208,20 @@ export class NodeExecutionContext implements ExecuteContext {
 
   getInstanceSetting(key: string): unknown {
     return this.o.instanceSettings?.get(key);
+  }
+
+  getChatMemory(sessionId: string): ChatMemory {
+    const store = this.o.chatMemory;
+    if (!store) throw new NodeOperationError('Chat memory is not available in this run');
+    const id = String(sessionId ?? '').trim();
+    if (!id) throw new NodeOperationError('The chat session id is empty', { hint: 'Use {{ $json.sessionId }} from the Chat Trigger, or any text that identifies the conversation.' });
+    // Sessions never cross workflows: two chats that pick the same id stay separate.
+    const key = `${this.workflow.id ?? 'unsaved'}:${id.slice(0, 200)}`;
+    return {
+      load: (limit) => store.load(key, limit),
+      append: (turns) => store.append(key, turns),
+      clear: () => store.clear(key),
+    };
   }
 
   async getCredentials(type: string): Promise<ResolvedCredential> {

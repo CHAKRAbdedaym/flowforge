@@ -85,7 +85,9 @@ describe('credentials API', () => {
   it('lists the credential types with their schema', async () => {
     const { agent } = await app();
     const types = (await agent.get('/api/credential-types')).body as CredentialTypeInfo[];
-    expect(types.map((x) => x.name).sort()).toEqual(['httpBasicAuth', 'httpBearerAuth', 'httpHeaderAuth', 'httpQueryAuth', 'smtp']);
+    expect(types.map((x) => x.name).sort()).toEqual(['discordWebhookApi', 'googlePalmApi', 'httpBasicAuth', 'httpBearerAuth', 'httpHeaderAuth', 'httpQueryAuth', 'smtp', 'telegramApi']);
+    // Every integration credential has a Test button (the same test() runs in `npm run check`).
+    for (const name of ['telegramApi', 'discordWebhookApi', 'googlePalmApi']) expect(types.find((x) => x.name === name), name).toMatchObject({ testable: true, envConfigured: false });
     const smtpType = types.find((x) => x.name === 'smtp')!;
     expect(smtpType.testable).toBe(true);
     expect(smtpType.envConfigured).toBe(false);

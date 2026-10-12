@@ -122,7 +122,7 @@ export function NodeDetailsView({ types }: { types: Map<string, NodeTypeInfo> })
           {type && <span className="hidden truncate text-[12px] text-subtle md:inline">{type.displayName}</span>}
           <div className="ml-auto flex items-center gap-2">
             <Button size="sm" icon={<Play size={14} />} loading={running} onClick={() => executeStep(node.name)} data-testid="ndv-execute-step">
-              {isTrigger && ['webhook', 'listener'].includes(type?.trigger?.kind ?? '') ? 'Listen for test event' : isTrigger && type?.trigger?.kind !== 'manual' ? 'Fetch test event' : 'Execute step'}
+              {type?.type === 'flowforge.chatTrigger' ? 'Open chat' : isTrigger && ['webhook', 'listener'].includes(type?.trigger?.kind ?? '') ? 'Listen for test event' : isTrigger && type?.trigger?.kind !== 'manual' ? 'Fetch test event' : 'Execute step'}
             </Button>
             <button type="button" data-testid="ndv-close" onClick={() => editor.openPanel(null)} className="rounded p-1.5 text-subtle hover:bg-panel-3 hover:text-fg" title="Close (Esc)">
               <X size={16} />

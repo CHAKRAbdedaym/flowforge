@@ -53,6 +53,7 @@ export function createApp(ctx: AppContext): FlowForgeApp {
     credentials: ctx.credentials,
     filesRoot: config.filesRoot,
     instanceSettings: ctx.settings,
+    chatMemory: ctx.chatMemory,
   });
   const executions = new ExecutionService({
     repo: ctx.executionsRepo,

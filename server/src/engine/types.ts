@@ -105,6 +105,27 @@ export interface ExecuteContext {
   getFilesRoot(): string;
   /** An instance setting switched on the Settings page (e.g. "executeCommandEnabled"). */
   getInstanceSetting(key: string): unknown;
+  /** Conversation history of a chat session of this workflow (Chat Trigger → AI nodes). */
+  getChatMemory(sessionId: string): ChatMemory;
+}
+
+export interface ChatTurn {
+  role: 'user' | 'model';
+  text: string;
+}
+
+export interface ChatMemory {
+  /** The last `limit` messages, oldest first. */
+  load(limit: number): ChatTurn[];
+  append(turns: ChatTurn[]): void;
+  clear(): void;
+}
+
+/** Where chat sessions are kept (SQLite table `chat_memory`; keys are scoped per workflow by the engine). */
+export interface ChatMemoryStore {
+  load(sessionKey: string, limit: number): ChatTurn[];
+  append(sessionKey: string, turns: ChatTurn[]): void;
+  clear(sessionKey: string): void;
 }
 
 /** Given to trigger nodes while their workflow is active (or listening for a test event). */
@@ -124,6 +145,10 @@ export interface TriggerContext {
   emitError(error: Error): void;
   /** Data kept between polls (persisted). */
   getStaticData(): Record<string, unknown>;
+  /** Writes the static data to the database now (listeners: it is otherwise saved when the trigger stops). */
+  saveStaticData(): void;
+  /** Credentials of a type declared in the node description. Throws MissingCredentialError. */
+  getCredentials(type: string): ResolvedCredential;
 }
 
 export interface TriggerHandle {
@@ -169,12 +194,16 @@ export type WebhookHandleResult =
       complete?(outcome: WebhookOutcome): WebhookResponse;
     };
 
-export type WebhookOutcome = { finished: false } | { finished: true; status: string; error?: string };
+/** `items` = output of the last node that ran (empty when the run failed). */
+export type WebhookOutcome = { finished: false } | { finished: true; status: string; error?: string; items: Item[] };
+
+/** First URL segment of a public endpoint: /webhook/…, /form/…, /chat/… (each has its own path namespace). */
+export type UrlPrefix = 'webhook' | 'form' | 'chat';
 
 /** Nodes that receive HTTP requests (Webhook, Form Trigger, Chat Trigger). */
 export interface WebhookSpec {
-  /** "/webhook/…" or "/form/…" style URLs. */
-  urlPrefix: 'webhook' | 'form';
+  /** "/webhook/…", "/form/…" or "/chat/…" style URLs. */
+  urlPrefix: UrlPrefix;
   /** HTTP methods and path (may contain :params) for this node instance. */
   endpoints(node: WorkflowNode, parameters: JsonObject): { methods: string[]; path: string };
   handle(input: {

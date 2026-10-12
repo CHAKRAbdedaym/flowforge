@@ -67,7 +67,7 @@ export interface PublicRouterOptions {
 
 export function publicRouter(o: PublicRouterOptions): Router {
   const router = Router();
-  router.use(['/webhook', '/webhook-test', '/webhook-waiting', '/form', '/form-test', '/form-waiting'], rateLimit(o.ratePerMinute));
+  router.use(['/webhook', '/webhook-test', '/webhook-waiting', '/form', '/form-test', '/form-waiting', '/chat', '/chat-test'], rateLimit(o.ratePerMinute));
 
   // Submissions have their own, much lower limit; the answer matches what the form page expects.
   const submitLimit = rateLimit(o.formRatePerMinute, (req, res, retryAfter) => {
@@ -84,6 +84,10 @@ export function publicRouter(o: PublicRouterOptions): Router {
   // ── Form Trigger ───────────────────────────────────────────────────────────
   router.all('/form/*path', limitPosts, safe(o.logger, (req, res) => o.webhooks.handle('prod', req, res, joinPath(req.params.path), 'form')));
   router.all('/form-test/*path', limitPosts, safe(o.logger, (req, res) => o.webhooks.handle('test', req, res, joinPath(req.params.path), 'form')));
+
+  // ── Chat Trigger (GET = the chat page, POST = one message) ──────────────────
+  router.all('/chat/*path', limitPosts, safe(o.logger, (req, res) => o.webhooks.handle('prod', req, res, joinPath(req.params.path), 'chat')));
+  router.all('/chat-test/*path', limitPosts, safe(o.logger, (req, res) => o.webhooks.handle('test', req, res, joinPath(req.params.path), 'chat')));
 
   // ── Wait node "On Form Submitted" ──────────────────────────────────────────
   const waitingForm = (id: string) => {

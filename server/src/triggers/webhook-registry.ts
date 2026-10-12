@@ -1,11 +1,12 @@
 import type { WorkflowData } from '@flowforge/shared';
+import type { UrlPrefix } from '../engine/types.js';
 
 export type WebhookKind = 'prod' | 'test';
 
 export interface WebhookRegistration {
   kind: WebhookKind;
   /** "/webhook/…" or "/form/…": separate namespaces. */
-  prefix?: 'webhook' | 'form';
+  prefix?: UrlPrefix;
   workflowId: string;
   /** Workflow snapshot that runs when the webhook is called. */
   workflow: WorkflowData;
@@ -49,7 +50,7 @@ export class WebhookRegistry {
   private regs: WebhookRegistration[] = [];
 
   /** A production webhook already using one of these methods on this path (other workflow or node). */
-  findConflict(methods: string[], path: string, workflowId: string, nodeName: string, prefix: 'webhook' | 'form' = 'webhook'): WebhookRegistration | undefined {
+  findConflict(methods: string[], path: string, workflowId: string, nodeName: string, prefix: UrlPrefix = 'webhook'): WebhookRegistration | undefined {
     const target = shape(path);
     return this.regs.find(
       (r) =>
@@ -96,7 +97,7 @@ export class WebhookRegistry {
     kind: WebhookKind,
     method: string,
     rawPath: string,
-    prefix: 'webhook' | 'form' = 'webhook',
+    prefix: UrlPrefix = 'webhook',
   ): { reg: WebhookRegistration; params: Record<string, string> } | { methods: string[] } | null {
     let path: string;
     try {

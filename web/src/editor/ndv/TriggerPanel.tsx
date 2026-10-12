@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink, Play, QrCode, Radio, Square } from 'lucide-react';
+import { ExternalLink, MessagesSquare, Play, QrCode, Radio, Square } from 'lucide-react';
 import type { NodeTypeInfo } from '@flowforge/shared';
 import { CopyButton } from '../../components/CopyButton';
 import { QrDialog, qrSrc } from '../../components/QrDialog';
 import { Button } from '../../components/ui/Button';
-import { listenForTestEvent, stopListening } from '../actions';
-import { useEditor } from '../store';
+import { CHAT_TRIGGER, listenForTestEvent, stopListening } from '../actions';
+import { editor, useEditor } from '../store';
 
 function Countdown({ until }: { until: string }) {
   const [now, setNow] = useState(Date.now());
@@ -99,6 +99,25 @@ export function TriggerPanel({ nodeName, type }: { nodeName: string; type: NodeT
         )}
         <Button size="sm" variant="secondary" icon={<Square size={13} />} onClick={() => void stopListening()} data-testid="stop-listening">
           Stop listening
+        </Button>
+      </div>
+    );
+  }
+
+  if (type.type === CHAT_TRIGGER) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-[12.5px] text-subtle">
+        Send a message in the test chat: the workflow runs with it and the reply of the last node appears in the chat.
+        <Button
+          size="sm"
+          icon={<MessagesSquare size={14} />}
+          data-testid="open-chat"
+          onClick={() => {
+            editor.setUi({ chatOpen: true });
+            editor.openPanel(null);
+          }}
+        >
+          Open chat
         </Button>
       </div>
     );
