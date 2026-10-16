@@ -8,6 +8,7 @@ import { binaryDataRouter } from './binary-data.js';
 import { credentialsRouter, credentialTypesRouter } from './credentials.js';
 import { examplesRouter } from './examples.js';
 import { qrRouter } from './qr.js';
+import { aiRouter } from './ai.js';
 import { settingsRouter } from './settings.js';
 import { devRouter } from './dev.js';
 import { executionsRouter } from './executions.js';
@@ -65,6 +66,7 @@ export function apiRouter(ctx: AppServices): Router {
   router.use('/qr', qrRouter());
   router.use('/examples', examplesRouter(ctx));
   router.use('/settings', settingsRouter(ctx));
+  router.use('/ai', aiRouter(ctx));
   if (ctx.config.devApi) router.use('/dev', devRouter(ctx));
 
   router.use((req, _res, next) => next(notFound(`API route not found: ${req.method} ${req.originalUrl}`)));

@@ -69,6 +69,14 @@ export function staticOutputs(type: NodeTypeInfo | undefined, node: WorkflowNode
   return node.onError === 'continueErrorOutput' && type?.group !== 'trigger' ? [...outputs, { type: 'main', displayName: 'error' }] : outputs;
 }
 
+/** AI slots of a cluster node (Chat Model, Memory, Tool): sub-nodes attach to them from below. */
+export const aiSlots = (type: NodeTypeInfo | undefined): ConnectionSpec[] => (type?.inputs ?? []).filter((i) => i.type !== 'main');
+
+/** For a sub-node: the slot type it plugs into (ai_languageModel, ai_memory or ai_tool). */
+export const aiOutput = (type: NodeTypeInfo | undefined): ConnectionSpec['type'] | undefined => type?.outputs.find((o) => o.type !== 'main')?.type;
+
+export const SLOT_LABELS: Record<string, string> = { ai_languageModel: 'Chat Model', ai_memory: 'Memory', ai_tool: 'Tool' };
+
 export async function fetchOutputs(node: WorkflowNode): Promise<ConnectionSpec[]> {
   return api<ConnectionSpec[]>('/node-types/outputs', {
     method: 'POST',

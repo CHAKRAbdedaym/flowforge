@@ -107,7 +107,85 @@ export interface ExecuteContext {
   getInstanceSetting(key: string): unknown;
   /** Conversation history of a chat session of this workflow (Chat Trigger → AI nodes). */
   getChatMemory(sessionId: string): ChatMemory;
+  /**
+   * Sub-nodes attached to the AI slots of this node (cluster nodes). Their parameters are resolved for input item
+   * `itemIndex` of THIS node; every call through the returned objects is recorded as a run of the sub-node.
+   */
+  getAiChatModel(itemIndex?: number): Promise<AiChatModel | undefined>;
+  getAiMemory(itemIndex?: number): Promise<AiMemory | undefined>;
+  getAiTools(itemIndex?: number): Promise<AiTool[]>;
 }
+
+// ── AI cluster nodes (AI Agent + sub-nodes) ──────────────────────────────────
+
+export type AiConnectionType = 'ai_languageModel' | 'ai_memory' | 'ai_tool';
+
+/** JSON Schema of a tool's arguments (always an object). */
+export interface ToolParameters {
+  type: 'object';
+  properties: Record<string, JsonObject>;
+  required?: string[];
+}
+
+/** What a Tool sub-node supplies. */
+export interface AiTool {
+  /** Function name given to the model: letters, digits and underscores, at most 64 characters. */
+  name: string;
+  /** Tells the model when to use the tool. */
+  description: string;
+  parameters: ToolParameters;
+  /** Runs the tool with the arguments chosen by the model. Returns anything JSON-serializable; may throw. */
+  invoke(args: JsonObject, o: { signal: AbortSignal }): Promise<unknown>;
+}
+
+export interface LlmToolCall {
+  /** Identifier given by the provider (sent back with the result when present). */
+  id?: string;
+  name: string;
+  args: JsonObject;
+}
+
+export type LlmMessage =
+  | { role: 'user'; text: string }
+  /** `raw` = the provider's own message object: resent unchanged (Gemini thought signatures live there). */
+  | { role: 'model'; text: string; toolCalls?: LlmToolCall[]; raw?: unknown }
+  | { role: 'tool'; results: { id?: string; name: string; output: unknown; isError?: boolean }[] };
+
+export interface LlmRequest {
+  system?: string;
+  messages: LlmMessage[];
+  tools?: Pick<AiTool, 'name' | 'description' | 'parameters'>[];
+  /** "none": the model must answer with text even though tools are declared. Default "auto". */
+  toolChoice?: 'auto' | 'none';
+}
+
+export interface LlmTurn {
+  text: string;
+  toolCalls: LlmToolCall[];
+  finishReason: string;
+  model: string;
+  usage: { promptTokens: number; outputTokens: number; totalTokens: number };
+  /** Provider message to put back in the next request as `LlmMessage.raw`. */
+  raw: unknown;
+}
+
+/** What a Chat Model sub-node supplies. */
+export interface AiChatModel {
+  provider: string;
+  model: string;
+  generate(request: LlmRequest, o: { signal: AbortSignal }): Promise<LlmTurn>;
+}
+
+/** What a Memory sub-node supplies. */
+export interface AiMemory {
+  sessionId: string;
+  /** Earlier messages of the session, oldest first. */
+  load(): ChatTurn[];
+  save(turns: ChatTurn[]): void;
+  clear(): void;
+}
+
+export type SuppliedData = AiChatModel | AiMemory | AiTool;
 
 export interface ChatTurn {
   role: 'user' | 'model';
@@ -224,6 +302,11 @@ export interface NodeType {
   /** Nodes whose outputs depend on parameters (Switch, Filter) compute them here. */
   outputs?: (parameters: JsonObject) => ConnectionSpec[];
   execute?(ctx: ExecuteContext): Promise<Item[][]> | Item[][];
+  /**
+   * Sub-nodes (output type ai_languageModel / ai_memory / ai_tool): return what the parent node gets.
+   * `ctx` resolves parameters against the PARENT's input item `itemIndex` (so `{{ $json.sessionId }}` works).
+   */
+  supplyData?(ctx: ExecuteContext, itemIndex: number): Promise<SuppliedData> | SuppliedData;
   /** Schedule / listener triggers: start listening; return a handle that stops it. */
   trigger?(ctx: TriggerContext): Promise<TriggerHandle> | TriggerHandle;
   /** Checks the configuration before activation (throw to refuse with a clear message). */

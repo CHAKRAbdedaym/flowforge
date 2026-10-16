@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import type { NodeTypeInfo } from '@flowforge/shared';
 import { cn } from '../../components/ui/cn';
-import { GROUP_LABELS, iconFor, isTriggerType } from '../../lib/node-types';
+import { aiOutput, aiSlots, GROUP_LABELS, iconFor, isTriggerType } from '../../lib/node-types';
+import { listAllEdges } from '../graph';
 import { NODE_DRAG_TYPE } from '../canvas/Canvas';
 import { editor, useEditor } from '../store';
 
@@ -17,10 +18,23 @@ function matches(t: NodeTypeInfo, q: string) {
     .every((w) => hay.includes(w));
 }
 
+let known = new Map<string, NodeTypeInfo>();
+const nodeTypeOf = (type: string) => known.get(type);
+
 /** Adds a node like the editor does from the creator or palette (auto-connect + open the panel). */
 export function addFromCreator(type: NodeTypeInfo) {
   const s = useEditor.getState();
-  const connectFrom = isTriggerType(type) || type.group === 'note' ? null : s.creator.connectFrom;
+  let connectFrom = isTriggerType(type) || type.group === 'note' ? null : s.creator.connectFrom;
+  const slot = aiOutput(type);
+  if (slot && !connectFrom?.slot) {
+    // A sub-node goes to the selected cluster node when that one has a free slot for it; otherwise it stays loose.
+    const selected = s.selected.length === 1 ? s.nodes.find((n) => n.id === s.selected[0]) : undefined;
+    const spec = selected ? aiSlots(nodeTypeOf(selected.type)).find((x) => x.type === slot) : undefined;
+    const used = selected ? listAllEdges(s.connections).filter((e) => e.target === selected.name && e.type === slot).length : 0;
+    connectFrom = selected && spec && (spec.maxConnections === undefined || used < spec.maxConnections) ? { node: selected.name, output: 0, slot } : null;
+  } else if (connectFrom?.slot && connectFrom.slot !== slot) {
+    connectFrom = null;
+  }
   const node = editor.addNode(type, connectFrom === undefined ? {} : { connectFrom });
   editor.closeCreator();
   if (!isTriggerType(type) && type.group !== 'note') editor.openPanel(node.name);
@@ -42,13 +56,18 @@ export function NodeCreator({ types }: { types: NodeTypeInfo[] }) {
     }
   }, [open]);
 
+  const slot = useEditor((s) => s.creator.connectFrom?.slot);
+  useEffect(() => {
+    known = new Map(types.map((t) => [t.type, t]));
+  }, [types]);
   const groups = useMemo(() => {
-    const visible = types.filter((t) => matches(t, query.trim()));
+    // Opened from an AI slot: only the sub-nodes that fit that slot are offered.
+    const visible = types.filter((t) => matches(t, query.trim()) && (!slot || aiOutput(t) === slot));
     const order = hasTrigger ? GROUP_ORDER : ['trigger', ...GROUP_ORDER.filter((g) => g !== 'trigger')];
     return order
       .map((g) => ({ group: g, items: visible.filter((t) => t.group === g || (g === 'ai' && t.group === 'ai-sub')) }))
       .filter((g) => g.items.length > 0);
-  }, [types, query, hasTrigger]);
+  }, [types, query, hasTrigger, slot]);
   const flat = groups.flatMap((g) => g.items);
 
   if (!open) return null;

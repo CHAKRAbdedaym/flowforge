@@ -11,10 +11,11 @@ import { useTitle } from '../lib/useTitle';
 import { useWorkflow } from '../lib/workflows-api';
 import { setNodeTypes } from './actions';
 import { addSticky, Canvas } from './canvas/Canvas';
+import { BuilderBar } from './BuilderBar';
 import { ChatPanel } from './ChatPanel';
 import { CommandPalette } from './CommandPalette';
 import { NodeCreator } from './creator/NodeCreator';
-import { useEditorShortcuts, useLiveExecution } from './hooks';
+import { useEditorShortcuts, useLiveExecution, useMissingCredentials } from './hooks';
 import { ExecutionLog } from './log/ExecutionLog';
 import { NodeDetailsView } from './ndv/NodeDetailsView';
 import { ShortcutsDialog } from './ShortcutsDialog';
@@ -33,6 +34,7 @@ function EditorShell({ list, byType }: { list: NodeTypeInfo[]; byType: Map<strin
   useEffect(() => wsClient.connect(), []);
   useLiveExecution(workflowId);
   useEditorShortcuts(byType);
+  useMissingCredentials();
 
   // Warn before closing the tab with unsaved changes.
   useEffect(() => {
@@ -53,6 +55,7 @@ function EditorShell({ list, byType }: { list: NodeTypeInfo[]; byType: Map<strin
         <Canvas types={byType} />
         <NodeCreator types={list} />
         <ChatPanel />
+        <BuilderBar />
       </div>
       <ExecutionLog />
       <NodeDetailsView types={byType} />

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { JsonObject, WorkflowNode, WorkflowRecord } from '@flowforge/shared';
 import { telegramHub } from '../src/integrations/telegram-hub.js';
 import { startDiscordMock, type DiscordMock } from './discord-mock.js';
-import { answer, startGeminiMock, type GeminiMock } from './gemini-mock.js';
+import { answer, functionCallReply, startGeminiMock, type GeminiMock } from './gemini-mock.js';
 import { makeTestApp, waitFor, type TestApp } from './helpers.js';
 import { startOpenMeteoMock, type OpenMeteoMock } from './open-meteo-mock.js';
 import { smtpData, startFakeSmtp, type FakeSmtp } from './smtp-helpers.js';
@@ -43,14 +43,14 @@ async function importExample(id: string): Promise<WorkflowRecord> {
 
 /** The examples call the real Open-Meteo: the tests send them to the local mock instead. */
 function useWeatherMock(wf: WorkflowRecord): WorkflowRecord {
-  const nodes = wf.nodes.map((n): WorkflowNode => (n.type === 'flowforge.openMeteo' ? { ...n, parameters: { ...n.parameters, options: { forecastUrl: meteo.forecastUrl, geocodingUrl: meteo.geocodingUrl } } } : n));
+  const nodes = wf.nodes.map((n): WorkflowNode => (n.type === 'flowforge.openMeteo' || n.type === 'flowforge.weatherTool' ? { ...n, parameters: { ...n.parameters, options: { forecastUrl: meteo.forecastUrl, geocodingUrl: meteo.geocodingUrl } } } : n));
   return t.ctx.workflowsRepo.update(wf.id, { name: wf.name, nodes, connections: wf.connections, settings: wf.settings })!;
 }
 
 describe('example workflows', () => {
-  it('lists the five examples with a description', async () => {
+  it('lists the seven examples with a description', async () => {
     const list = (await agent.get('/api/examples')).body as { id: string; name: string; description: string; nodeCount: number }[];
-    expect(list.map((e) => e.id)).toEqual(['contact-form-discord', 'daily-weather-email', 'form-to-email', 'telegram-assistant', 'website-chatbot']);
+    expect(list.map((e) => e.id)).toEqual(['contact-form-discord', 'daily-weather-email', 'form-to-email', 'telegram-ai-assistant', 'telegram-assistant', 'website-chatbot-agent', 'website-chatbot']);
     for (const example of list) expect(example.description.length, example.id).toBeGreaterThan(40);
     // Every node type and every credential-free default of the examples exists in this build.
     for (const example of list) {
@@ -149,4 +149,62 @@ describe('example workflows', () => {
     expect(second.systemInstruction.parts[0]!.text).toContain('friendly assistant');
     expect(gemini.calls[0]!.model).toBe('gemini-3.8-flash');
   });
+
+  type Part = { text?: string; functionCall?: { name: string; args: JsonObject }; functionResponse?: { name: string; response: { summary?: string; location?: string; result?: unknown; error?: string } } };
+  const partsOf = (call: { body?: unknown }) => (call.body as { contents: { role: string; parts: Part[] }[] }).contents;
+
+  it('Website chatbot with AI Agent: answers a weather question through the Weather Tool and remembers the session', async () => {
+    await credential('Gemini', 'googlePalmApi', { apiKey: 'AIzaSy-example-key-123456', host: gemini.url });
+    const wf = useWeatherMock(await importExample('website-chatbot-agent'));
+    expect((await activate(agent, wf.id)).status).toBe(200);
+    const chat = wf.nodes.find((n) => n.type === 'flowforge.chatTrigger')!;
+    const say = (chatInput: string) => request(t.app).post(`/chat/${chat.webhookId}`).set('Accept', 'application/json').send({ chatInput, sessionId: 'visitor-7' });
+
+    gemini.enqueue(functionCallReply([{ name: 'get_weather', args: { city: 'Lyon' } }]), answer('It is partly cloudy in Lyon, about 20 °C.'), functionCallReply([{ name: 'calculator', args: { expression: '19.8 * 9 / 5 + 32' } }]), answer('That is 67.64 °F.'));
+    const first = await say('What is the weather in Lyon?');
+    expect(first.body.output).toBe('It is partly cloudy in Lyon, about 20 °C.');
+    // Turn 1 declares both tools; turn 2 carries the real result of the Weather Tool.
+    const declared = (gemini.calls[0]!.body as { tools: { functionDeclarations: { name: string }[] }[] }).tools[0]!.functionDeclarations.map((d) => d.name);
+    expect(declared).toEqual(['get_weather', 'calculator']);
+    const weatherResult = partsOf(gemini.calls[1]!).at(-1)!.parts[0]!.functionResponse!;
+    expect(weatherResult.name).toBe('get_weather');
+    expect(weatherResult.response.location).toBe('Lyon, France');
+    expect(weatherResult.response.summary).toMatch(/Partly cloudy, 19\.8 °C/);
+    expect(meteo.geocodingRequests()[0]!.query.name).toBe('Lyon');
+
+    const second = await say('Convert that to Fahrenheit');
+    expect(second.body.output).toBe('That is 67.64 °F.');
+    // Memory: the second conversation starts with the first question and answer.
+    expect(partsOf(gemini.calls[2]!).map((c) => `${c.role}: ${c.parts[0]!.text}`)).toEqual(['user: What is the weather in Lyon?', 'model: It is partly cloudy in Lyon, about 20 °C.', 'user: Convert that to Fahrenheit']);
+    expect(partsOf(gemini.calls[3]!).at(-1)!.parts[0]!.functionResponse!.response.result).toBeCloseTo(67.64);
+
+    // Every sub-node shows what it did in the execution.
+    const done = await finished(t, executions(t, wf.id)[0]!.id);
+    expect(done.status).toBe('success');
+    expect(Object.keys(done.runData).sort()).toEqual(['AI Agent', 'Calculator', 'Chat', 'Gemini Chat Model', 'Simple Memory']);
+    expect(done.runData['Gemini Chat Model']).toHaveLength(2);
+    expect(done.runData.Calculator![0]!.data.main[0]![0]!.json).toMatchObject({ tool: 'calculator', input: { expression: '19.8 * 9 / 5 + 32' } });
+  });
+
+  it('Telegram AI assistant: the agent answers in the chat that asked, with one memory per chat', async () => {
+    await credential('Gemini', 'googlePalmApi', { apiKey: 'AIzaSy-example-key-123456', host: gemini.url });
+    await credential('Bot', 'telegramApi', { accessToken: TG_TOKEN, baseUrl: telegram.url });
+    const wf = useWeatherMock(await importExample('telegram-ai-assistant'));
+    expect((await activate(agent, wf.id)).status, 'activation').toBe(200);
+
+    gemini.enqueue(functionCallReply([{ name: 'get_weather', args: { city: 'Paris', days: 2 } }]), answer('Paris: partly cloudy, take a light jacket.'), answer('Hello! How can I help?'));
+    telegram.push(textUpdate('Do I need a jacket in Paris?', { chat: 501 }));
+    const reply = await waitFor(() => telegram.calls('sendMessage')[0], 8000, 'agent reply');
+    expect(reply.body).toMatchObject({ chat_id: '501', text: 'Paris: partly cloudy, take a light jacket.' });
+    expect(partsOf(gemini.calls[1]!).at(-1)!.parts[0]!.functionResponse!.response.location).toBe('Paris, France');
+
+    // Another chat has its own (empty) memory.
+    telegram.push(textUpdate('Hi', { chat: 502 }));
+    const other = await waitFor(() => telegram.calls('sendMessage')[1], 8000, 'second chat reply');
+    expect(other.body).toMatchObject({ chat_id: '502', text: 'Hello! How can I help?' });
+    expect(partsOf(gemini.calls[2]!).map((c) => c.parts[0]!.text)).toEqual(['Hi']);
+    expect(t.ctx.chatMemory.count(`${wf.id}:501`)).toBe(2);
+    expect(t.ctx.chatMemory.count(`${wf.id}:502`)).toBe(2);
+  });
 });
+

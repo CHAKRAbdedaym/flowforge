@@ -14,6 +14,7 @@ const ConnectionSpecSchema = z.object({
   type: z.enum(['main', 'ai_languageModel', 'ai_memory', 'ai_tool']),
   displayName: z.string().optional(),
   required: z.boolean().optional(),
+  maxConnections: z.number().int().positive().optional(),
 });
 
 const PropertySchema: z.ZodType = z.lazy(() =>

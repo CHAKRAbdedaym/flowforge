@@ -195,7 +195,8 @@ function apiError(status: number, problem: ApiProblem, model: string): Integrati
 
 const STOPPED_BY_SAFETY = 'The answer was cut by a safety filter. Reword the prompt or the input.';
 
-function readAnswer(body: string, request: GeminiRequest, secrets: string[]): GeminiResult {
+/** JSON-parses an answer body and refuses a blocked prompt. Shared by `generateContent` and `generateTurn`. */
+function parseBody(body: string, secrets: string[]): Obj {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -208,6 +209,44 @@ function readAnswer(body: string, request: GeminiRequest, secrets: string[]): Ge
   if (blockReason) {
     throw new IntegrationError(SERVICE, `Gemini blocked the prompt (${blockReason})`, { code: blockReason, hint: 'The prompt or an image was refused by the safety filters. Reword it and try again.' });
   }
+  return parsed;
+}
+
+/** Finish reasons that mean the model failed to call a tool (documented values of `candidates[].finishReason`). */
+const TOOL_FINISH_REASONS = ['MALFORMED_FUNCTION_CALL', 'UNEXPECTED_TOOL_CALL', 'TOO_MANY_TOOL_CALLS', 'MISSING_THOUGHT_SIGNATURE'];
+
+/** The error for an answer with no text (and, for a turn, no function call either). */
+function noTextError(finishReason: string): IntegrationError {
+  if (finishReason === 'MAX_TOKENS') {
+    return new IntegrationError(SERVICE, 'Gemini used all its output tokens before writing an answer', {
+      code: finishReason,
+      hint: 'Raise "Max Output Tokens" in the options (the thinking tokens count too), or leave it empty.',
+    });
+  }
+  if (TOOL_FINISH_REASONS.includes(finishReason)) {
+    return new IntegrationError(SERVICE, `Gemini could not call the tool (${finishReason})`, {
+      code: finishReason,
+      hint: 'The model produced a tool call it could not complete. Try again, simplify the tool descriptions, or choose another model.',
+    });
+  }
+  if (finishReason !== 'STOP' && finishReason !== 'UNKNOWN') {
+    return new IntegrationError(SERVICE, `Gemini stopped the answer (${finishReason})`, { code: finishReason, hint: STOPPED_BY_SAFETY });
+  }
+  return new IntegrationError(SERVICE, 'Gemini returned an empty answer', { hint: 'Try again, or make the prompt more precise.' });
+}
+
+function usageOf(parsed: Obj) {
+  const usageMetadata = isObj(parsed.usageMetadata) ? parsed.usageMetadata : {};
+  return {
+    promptTokens: num(usageMetadata.promptTokenCount) ?? 0,
+    outputTokens: num(usageMetadata.candidatesTokenCount) ?? 0,
+    thoughtsTokens: num(usageMetadata.thoughtsTokenCount) ?? 0,
+    totalTokens: num(usageMetadata.totalTokenCount) ?? 0,
+  };
+}
+
+function readAnswer(body: string, request: GeminiRequest, secrets: string[]): GeminiResult {
+  const parsed = parseBody(body, secrets);
 
   const candidate = Array.isArray(parsed.candidates) ? parsed.candidates.find(isObj) : undefined;
   const parts = candidate && isObj(candidate.content) && Array.isArray(candidate.content.parts) ? candidate.content.parts.filter(isObj) : [];
@@ -218,30 +257,13 @@ function readAnswer(body: string, request: GeminiRequest, secrets: string[]): Ge
     .join('');
   const finishReason = candidate && typeof candidate.finishReason === 'string' ? candidate.finishReason : text ? 'STOP' : 'UNKNOWN';
 
-  if (!text) {
-    if (finishReason === 'MAX_TOKENS') {
-      throw new IntegrationError(SERVICE, 'Gemini used all its output tokens before writing an answer', {
-        code: finishReason,
-        hint: 'Raise "Max Output Tokens" in the options (the thinking tokens count too), or leave it empty.',
-      });
-    }
-    if (finishReason !== 'STOP' && finishReason !== 'UNKNOWN') {
-      throw new IntegrationError(SERVICE, `Gemini stopped the answer (${finishReason})`, { code: finishReason, hint: STOPPED_BY_SAFETY });
-    }
-    throw new IntegrationError(SERVICE, 'Gemini returned an empty answer', { hint: 'Try again, or make the prompt more precise.' });
-  }
+  if (!text) throw noTextError(finishReason);
 
-  const usageMetadata = isObj(parsed.usageMetadata) ? parsed.usageMetadata : {};
   const result: GeminiResult = {
     text,
     model: typeof parsed.modelVersion === 'string' && parsed.modelVersion ? parsed.modelVersion : request.model,
     finishReason,
-    usage: {
-      promptTokens: num(usageMetadata.promptTokenCount) ?? 0,
-      outputTokens: num(usageMetadata.candidatesTokenCount) ?? 0,
-      thoughtsTokens: num(usageMetadata.thoughtsTokenCount) ?? 0,
-      totalTokens: num(usageMetadata.totalTokenCount) ?? 0,
-    },
+    usage: usageOf(parsed),
   };
   if (request.json) result.json = parseJsonAnswer(text, secrets);
   return result;
@@ -259,15 +281,14 @@ function parseJsonAnswer(text: string, secrets: string[]): unknown {
   }
 }
 
-/** One prompt → one answer. Retries 429 (short waits) and 500 / 503; every other failure throws an IntegrationError. */
-export async function generateContent(auth: GeminiAuth, request: GeminiRequest, o: GeminiCallOptions = {}): Promise<GeminiResult> {
+/** POST to generateContent with the retry policy (429 with a short wait, 500, 503). Returns the body of a 2xx answer. */
+async function postGenerate(auth: GeminiAuth, modelName: string, body: Obj, requestedRetries: number | undefined, o: GeminiCallOptions): Promise<{ text: string; model: string; secrets: string[] }> {
   const apiKey = auth.apiKey.trim();
   const secrets = [apiKey];
-  checkImages(request.images ?? []);
-  const model = request.model.trim().replace(/^models\//, '');
+  const model = modelName.trim().replace(/^models\//, '');
   const url = `${(auth.host?.trim() || GEMINI_HOST).replace(/\/+$/, '')}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const body = JSON.stringify(buildGeminiBody(request));
-  const maxRetries = Math.min(Math.max(Math.floor(request.maxRetries ?? 2), 0), 5);
+  const payload = JSON.stringify(body);
+  const maxRetries = Math.min(Math.max(Math.floor(requestedRetries ?? 2), 0), 5);
   const signal = o.signal ?? new AbortController().signal;
 
   for (let attempt = 0; ; attempt++) {
@@ -275,7 +296,7 @@ export async function generateContent(auth: GeminiAuth, request: GeminiRequest, 
       method: 'POST',
       url,
       headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
-      body,
+      body: payload,
       timeoutMs: o.timeoutMs ?? 60_000,
       followRedirects: false,
       maxRedirects: 0,
@@ -284,7 +305,7 @@ export async function generateContent(auth: GeminiAuth, request: GeminiRequest, 
       secrets,
     });
     const text = res.body.toString('utf8');
-    if (res.statusCode >= 200 && res.statusCode < 300) return readAnswer(text, { ...request, model }, secrets);
+    if (res.statusCode >= 200 && res.statusCode < 300) return { text, model, secrets };
 
     const error = apiError(res.statusCode, readProblem(text, secrets), model);
     if (attempt < maxRetries) {
@@ -299,4 +320,110 @@ export async function generateContent(auth: GeminiAuth, request: GeminiRequest, 
     }
     throw error;
   }
+}
+
+/** One prompt → one answer. Retries 429 (short waits) and 500 / 503; every other failure throws an IntegrationError. */
+export async function generateContent(auth: GeminiAuth, request: GeminiRequest, o: GeminiCallOptions = {}): Promise<GeminiResult> {
+  checkImages(request.images ?? []);
+  const sent = await postGenerate(auth, request.model, buildGeminiBody(request), request.maxRetries, o);
+  return readAnswer(sent.text, { ...request, model: sent.model }, sent.secrets);
+}
+
+// ── Function calling (AI Agent) ──────────────────────────────────────────────
+// Docs: https://ai.google.dev/api/generate-content (tools, toolConfig.functionCallingConfig, Content, Part)
+
+/** One entry of `tools[].functionDeclarations`. */
+export interface GeminiFunctionDeclaration {
+  /** a-z, A-Z, 0-9 and underscores, at most 128 characters. */
+  name: string;
+  description: string;
+  /** A JSON Schema object. */
+  parametersJsonSchema: Record<string, unknown>;
+}
+
+export interface GeminiTurnRequest {
+  model: string;
+  /** Gemini `Content[]`, sent as is (model contents of earlier turns must be the raw ones, thought signatures included). */
+  contents: unknown[];
+  systemInstruction?: string;
+  tools?: GeminiFunctionDeclaration[];
+  /** "none" = `toolConfig.functionCallingConfig.mode: "NONE"` (the model must answer with text). Default: nothing sent (AUTO). */
+  toolChoice?: 'auto' | 'none';
+  temperature?: number;
+  maxOutputTokens?: number;
+  topP?: number;
+  topK?: number;
+  maxRetries?: number;
+}
+
+export interface GeminiFunctionCall {
+  id?: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export interface GeminiTurnResult {
+  /** `candidates[0].content` exactly as received: put it back unchanged in the next request. */
+  content: unknown;
+  text: string;
+  functionCalls: GeminiFunctionCall[];
+  finishReason: string;
+  model: string;
+  usage: GeminiResult['usage'];
+}
+
+export function buildTurnBody(request: GeminiTurnRequest): Obj {
+  const body: Obj = { contents: request.contents };
+  if (request.systemInstruction?.trim()) body.systemInstruction = { parts: [{ text: request.systemInstruction }] };
+  const tools = request.tools ?? [];
+  if (tools.length) {
+    body.tools = [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.parametersJsonSchema })) }];
+    if (request.toolChoice === 'none') body.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
+  }
+  const generationConfig: Obj = {};
+  const settings: [string, number | undefined][] = [
+    ['temperature', num(request.temperature)],
+    ['maxOutputTokens', num(request.maxOutputTokens)],
+    ['topP', num(request.topP)],
+    ['topK', num(request.topK)],
+  ];
+  for (const [key, value] of settings) if (value !== undefined) generationConfig[key] = value;
+  if (Object.keys(generationConfig).length) body.generationConfig = generationConfig;
+  return body;
+}
+
+function readTurn(body: string, modelName: string, secrets: string[]): GeminiTurnResult {
+  const parsed = parseBody(body, secrets);
+  const candidate = Array.isArray(parsed.candidates) ? parsed.candidates.find(isObj) : undefined;
+  const content = candidate && isObj(candidate.content) ? candidate.content : undefined;
+  const parts = content && Array.isArray(content.parts) ? content.parts.filter(isObj) : [];
+  const text = parts
+    .filter((p) => p.thought !== true && typeof p.text === 'string')
+    .map((p) => p.text as string)
+    .join('');
+  const functionCalls: GeminiFunctionCall[] = [];
+  for (const part of parts) {
+    const call = part.functionCall;
+    if (!isObj(call) || typeof call.name !== 'string' || !call.name) continue;
+    functionCalls.push({ ...(typeof call.id === 'string' && call.id ? { id: call.id } : {}), name: call.name, args: isObj(call.args) ? call.args : {} });
+  }
+  const finishReason = candidate && typeof candidate.finishReason === 'string' ? candidate.finishReason : text || functionCalls.length ? 'STOP' : 'UNKNOWN';
+  if (!text && !functionCalls.length) throw noTextError(finishReason);
+  return {
+    content: content ?? { role: 'model', parts: [] },
+    text,
+    functionCalls,
+    finishReason,
+    model: typeof parsed.modelVersion === 'string' && parsed.modelVersion ? parsed.modelVersion : modelName,
+    usage: usageOf(parsed),
+  };
+}
+
+/**
+ * One turn of a function-calling conversation. Same URL, header, retries and error translation as `generateContent`.
+ * A turn with function calls and no text is a valid answer.
+ */
+export async function generateTurn(auth: GeminiAuth, request: GeminiTurnRequest, o: GeminiCallOptions = {}): Promise<GeminiTurnResult> {
+  const sent = await postGenerate(auth, request.model, buildTurnBody(request), request.maxRetries, o);
+  return readTurn(sent.text, sent.model, sent.secrets);
 }

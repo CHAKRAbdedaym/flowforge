@@ -86,6 +86,68 @@ const TEST_NODES = [
       return [[{ json: { text: (await ctx.helpers.getBinaryDataBuffer(0, 'data')).toString() } }]];
     },
   }),
+  // ── AI cluster test nodes: a parent that uses whatever is attached to its slots, and a minimal tool ──
+  defineNode({
+    description: {
+      ...hidden,
+      type: 'test.aiHarness',
+      displayName: 'AI Harness',
+      description: 'Calls one attached tool and reports what is attached',
+      group: 'ai',
+      defaults: { name: 'AI Harness' },
+      inputs: [{ type: 'main' }, { type: 'ai_languageModel', maxConnections: 1 }, { type: 'ai_memory', maxConnections: 1 }, { type: 'ai_tool' }],
+    },
+    properties: [
+      { name: 'tool', displayName: 'Tool', type: 'string', default: '' },
+      { name: 'args', displayName: 'Arguments', type: 'json', default: {} },
+    ],
+    async execute(ctx) {
+      const out = await ctx.forEachItem(async (_item, i) => {
+        const [model, memory, tools] = [await ctx.getAiChatModel(i), await ctx.getAiMemory(i), await ctx.getAiTools(i)];
+        const json: Record<string, unknown> = { tools: tools.map((t) => t.name), hasModel: Boolean(model), hasMemory: Boolean(memory) };
+        const name = ctx.getNodeParameter<string>('tool', i, '');
+        const tool = tools.find((t) => t.name === name);
+        if (tool) {
+          try {
+            json.result = await tool.invoke(ctx.getNodeParameter('args', i, {}), { signal: ctx.signal });
+          } catch (err) {
+            json.toolError = (err as Error).message;
+          }
+        }
+        return { json: json as never };
+      });
+      return [out];
+    },
+  }),
+  defineNode({
+    description: {
+      ...hidden,
+      type: 'test.fakeTool',
+      displayName: 'Fake Tool',
+      description: 'Echoes its arguments',
+      group: 'ai-sub',
+      defaults: { name: 'Fake Tool' },
+      inputs: [],
+      outputs: [{ type: 'ai_tool' }],
+    },
+    properties: [
+      { name: 'toolName', displayName: 'Name', type: 'string', default: 'echo' },
+      { name: 'prefix', displayName: 'Prefix', type: 'string', default: '' },
+    ],
+    supplyData(ctx, itemIndex) {
+      const prefix = ctx.getNodeParameter<string>('prefix', itemIndex, '');
+      if (prefix === 'BROKEN') throw new Error('The fake tool is misconfigured');
+      return {
+        name: ctx.getNodeParameter<string>('toolName', itemIndex, 'echo'),
+        description: 'Echoes what it gets',
+        parameters: { type: 'object', properties: { text: { type: 'string' } } },
+        invoke: async (args) => {
+          if (args.fail) throw new Error('tool exploded');
+          return { echoed: args, prefix };
+        },
+      };
+    },
+  }),
   defineNode({
     description: { ...hidden, type: 'test.trigger', displayName: 'Test Trigger', description: 'Another trigger', group: 'trigger', inputs: [], defaults: { name: 'Test Trigger' } },
     properties: [],

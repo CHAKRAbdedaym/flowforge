@@ -1,6 +1,7 @@
 import type {
   ExecutionMode,
   Item,
+  JsonObject,
   NodeRun,
   NodeRunStatus,
   PairedItem,
@@ -25,8 +26,8 @@ import {
 } from './errors.js';
 import type { ExpressionEngine } from './expressions/engine.js';
 import { WorkflowGraph } from './graph.js';
-import { NodeExecutionContext, type ExecutionServices } from './node-context.js';
-import type { ChatMemoryStore, ChatTurn, CredentialsProvider, NodeType } from './types.js';
+import { NodeExecutionContext, type ExecutionServices, type NodeContextOptions } from './node-context.js';
+import type { AiChatModel, AiConnectionType, AiMemory, AiTool, ChatMemoryStore, ChatTurn, CredentialsProvider, NodeType, SuppliedData } from './types.js';
 
 export interface RunHooks {
   nodeStarted?(nodeName: string, runIndex: number): void;
@@ -457,6 +458,128 @@ export class WorkflowRunner {
     }
   }
 
+  /**
+   * Cluster nodes: asks every sub-node attached to the `connection` slot of `parent` for what it supplies
+   * (left to right on the canvas). The returned objects record each use as a run of the sub-node, so the
+   * editor shows what the model, the memory and the tools did.
+   */
+  private async supply(
+    req: RunRequest,
+    parent: WorkflowNode,
+    connection: AiConnectionType,
+    itemIndex: number,
+    live: Live,
+    contextFor: (sub: WorkflowNode, type: NodeType) => NodeExecutionContext,
+  ): Promise<SuppliedData[]> {
+    const attached: WorkflowNode[] = [];
+    for (const sub of req.workflow.nodes) {
+      const targets = (req.workflow.connections[sub.name]?.[connection] ?? []).flat();
+      if (!sub.disabled && targets.some((t) => t?.node === parent.name)) attached.push(sub);
+    }
+    attached.sort((a, b) => a.position[0] - b.position[0] || a.position[1] - b.position[1]);
+
+    const out: SuppliedData[] = [];
+    for (const sub of attached) {
+      const type = this.deps.registry.require(sub.type);
+      if (!type.supplyData || !type.description.outputs.some((o) => o.type === connection)) {
+        throw new NodeOperationError(`"${sub.name}" cannot be attached to this slot of "${parent.name}"`, { hint: 'Remove the connection and attach a node made for this slot.' });
+      }
+      let data: SuppliedData;
+      try {
+        data = await type.supplyData(contextFor(sub, type), itemIndex);
+      } catch (err) {
+        // A misconfigured sub-node (missing credential, empty parameter…) is shown on that sub-node.
+        const error = err instanceof FlowError ? err : toFlowError(err, sub.name);
+        error.node ??= sub.name;
+        this.recordAiRun(req, live, sub, parent, Date.now(), {}, error);
+        throw error;
+      }
+      out.push(this.recorded(req, live, sub, parent, connection, data));
+    }
+    return out;
+  }
+
+  private recordAiRun(req: RunRequest, live: Live, sub: WorkflowNode, parent: WorkflowNode, startTime: number, json: JsonObject, error?: FlowError) {
+    const { runData } = live.state;
+    const runIndex = runData[sub.name]?.length ?? 0;
+    const run: NodeRun = {
+      startTime,
+      executionTime: Date.now() - startTime,
+      status: error ? 'error' : 'success',
+      source: [{ previousNode: parent.name, previousNodeOutput: 0, previousNodeRun: runData[parent.name]?.length ?? 0 }],
+      data: { main: [error ? [] : [{ json }]] },
+    };
+    if (error) run.error = serializeError(error, sub.name);
+    (runData[sub.name] ??= []).push(run);
+    req.hooks?.nodeFinished?.(sub.name, runIndex, run);
+  }
+
+  /** Wraps what a sub-node supplies so that every call becomes a visible run of that sub-node. */
+  private recorded(req: RunRequest, live: Live, sub: WorkflowNode, parent: WorkflowNode, connection: AiConnectionType, data: SuppliedData): SuppliedData {
+    const track = async <T>(work: () => Promise<T> | T, describe: (result: T) => JsonObject): Promise<T> => {
+      req.hooks?.nodeStarted?.(sub.name, live.state.runData[sub.name]?.length ?? 0);
+      const startTime = Date.now();
+      try {
+        const result = await work();
+        this.recordAiRun(req, live, sub, parent, startTime, describe(result));
+        return result;
+      } catch (err) {
+        if (live.signal.aborted) throw live.signal.reason;
+        const error = err instanceof FlowError ? err : toFlowError(err, sub.name);
+        this.recordAiRun(req, live, sub, parent, startTime, {}, error);
+        throw err;
+      }
+    };
+    const trackSync = <T>(work: () => T, describe: (result: T) => JsonObject): T => {
+      req.hooks?.nodeStarted?.(sub.name, live.state.runData[sub.name]?.length ?? 0);
+      const startTime = Date.now();
+      try {
+        const result = work();
+        this.recordAiRun(req, live, sub, parent, startTime, describe(result));
+        return result;
+      } catch (err) {
+        this.recordAiRun(req, live, sub, parent, startTime, {}, err instanceof FlowError ? err : toFlowError(err, sub.name));
+        throw err;
+      }
+    };
+    const plain = (value: unknown): JsonObject[string] => (value === undefined ? null : (JSON.parse(JSON.stringify(value)) as JsonObject[string]));
+
+    if (connection === 'ai_tool') {
+      const tool = data as AiTool;
+      return {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+        invoke: (args, o) => track(() => tool.invoke(args, o), (output) => ({ tool: tool.name, input: plain(args), output: plain(output) })),
+      };
+    }
+    if (connection === 'ai_memory') {
+      const memory = data as AiMemory;
+      return {
+        sessionId: memory.sessionId,
+        load: () => trackSync(() => memory.load(), (messages) => ({ action: 'load', sessionId: memory.sessionId, messages: plain(messages) })),
+        save: (turns) => trackSync(() => memory.save(turns), () => ({ action: 'save', sessionId: memory.sessionId, messages: plain(turns) })),
+        clear: () => trackSync(() => memory.clear(), () => ({ action: 'clear', sessionId: memory.sessionId })),
+      };
+    }
+    const model = data as AiChatModel;
+    return {
+      provider: model.provider,
+      model: model.model,
+      generate: (request, o) =>
+        track(
+          () => model.generate(request, o),
+          (turn) => ({
+            model: turn.model,
+            messages: request.messages.length,
+            tools: (request.tools ?? []).map((t) => t.name),
+            response: { text: turn.text, toolCalls: plain(turn.toolCalls), finishReason: turn.finishReason },
+            usage: turn.usage,
+          }),
+        ),
+    };
+  }
+
   /** Runs the node's code with retries and the "On Error" setting applied. */
   private async execute(
     req: RunRequest,
@@ -476,13 +599,13 @@ export class WorkflowRunner {
     const { signal } = live;
 
     for (let attempt = 1; attempt <= tries; attempt++) {
-      const ctx = new NodeExecutionContext({
-        node,
-        type,
+      const options = (target: WorkflowNode, targetType: NodeType, targetRunIndex: number): NodeContextOptions => ({
+        node: target,
+        type: targetType,
         workflow: req.workflow,
         mode: req.mode,
         executionId: req.executionId,
-        runIndex,
+        runIndex: targetRunIndex,
         inputs,
         sources: task.sources,
         runData: live.state.runData,
@@ -499,6 +622,11 @@ export class WorkflowRunner {
         filesRoot: this.deps.filesRoot,
         instanceSettings: this.deps.instanceSettings,
         chatMemory: this.chatMemory,
+      });
+      const ctx = new NodeExecutionContext({
+        ...options(node, type, runIndex),
+        // Sub-nodes see the same input items as their parent, so their expressions resolve like the parent's.
+        supply: (connection, itemIndex) => this.supply(req, node, connection, itemIndex, live, (sub, subType) => new NodeExecutionContext(options(sub, subType, live.state.runData[sub.name]?.length ?? 0))),
       });
       try {
         const raw = await raceAbort(() => type.execute!(ctx), signal);

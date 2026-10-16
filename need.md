@@ -3,7 +3,7 @@
 Tick each box when it is done. Nothing here costs money.
 **Never write a real key in this file or in git.** Keys go in `.env` (ignored by git) or on the Credentials page.
 
-Status of this file: written at the end of Phase 5. It lists only what the app really uses today.
+Status of this file: written at the end of Phase 5, AI section added in Phase 6. It lists only what the app really uses today.
 Items marked **(not verified)** could not be tested by the developer without real keys: you test them with
 `npm run check`.
 
@@ -126,6 +126,28 @@ stops receiving. For the side-by-side comparison with n8n, create a second bot.
 
 ---
 
+## 2b. AI features: what needs the Gemini key, what works offline
+
+| Feature | Without a Gemini key | With the Gemini key |
+|---|---|---|
+| **AI Workflow Builder** (prompt bar on the canvas: "Describe your automation…") | Works **offline**: it picks the closest ready-made template and labels the result **"Offline: closest template"**. The 6 suggestion chips all have a matching template | Gemini writes a workflow for your sentence, labelled **"Built with Gemini"**. If Gemini fails (rate limit, timeout, invalid answer) the offline template is used and the reason is shown |
+| **AI Agent** node (with Gemini Chat Model, Simple Memory, tools) | Does not run: the *Gemini Chat Model* shows "Google Gemini API credentials are missing" with **Open Credentials** | Works |
+| Tools of the agent: **Calculator**, **Code Tool** | Run locally, no internet, but only an agent can call them | Work |
+| Tools of the agent: **Weather Tool**, **HTTP Request Tool** | Same; they also need internet (the Weather Tool needs no key) | Work |
+| **Google Gemini** node, chatbot examples | Clear "credentials are missing" error | Work |
+| Everything else (editor, triggers, forms, chat page, data nodes, email, Telegram, Discord) | Unaffected | Unaffected |
+
+- [ ] Gemini key added (section 2.4): it is the **only** key the AI features need
+- [ ] The builder never sends a key, a credential or your existing workflow to Gemini: only the list of node
+      types and the sentence you typed
+- [ ] An agent stops by itself after at most 8 model calls per message
+- [ ] Each chat message of an agent costs 1 to 8 Gemini requests (one per step): watch the free limit in AI
+      Studio while rehearsing **(limits not verified)**
+- [ ] Verify with the key: import the example "Website chatbot with AI Agent", click **Chat**, ask
+      *What is the weather in Paris?* **(not verified by the developer with a real key)**
+
+---
+
 ## 3. Machine requirements
 
 - [ ] **Node.js 20.11 or newer** (22 LTS recommended). Check: `node -v`
@@ -227,7 +249,7 @@ The day before:
 
 - [ ] `npm run check -- --send` shows **no FAIL** and no SKIP for the services you will show
 - [ ] `npm test` is green
-- [ ] Import the examples: **Workflows → Examples** → import all five
+- [ ] Import the examples: **Workflows → Examples** → import all seven
 - [ ] Open each imported workflow, read its note, set your own email address / city
 - [ ] **Form**: activate "Contact form → Discord embed + confirmation email", scan the QR code with your
       phone, submit, check the Discord card and the email

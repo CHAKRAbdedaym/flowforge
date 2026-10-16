@@ -32,12 +32,22 @@ export const FlowEdge = memo(function FlowEdge(props: EdgeProps) {
   const live = useEditor((s) => (ref.key ? s.execution.edges[ref.key] : undefined));
   const running = useEditor((s) => isRunning(s.execution.status));
   const isError = ref.error === true;
+  // AI connections (sub-node → slot) carry no items: they are drawn dashed and never show a count.
+  const isAi = Boolean(ref.ref?.type && ref.ref.type !== 'main');
+  const fresh = useEditor((s) => (ref.key ? s.fresh.includes(ref.key) : false));
   const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, curvature: 0.35 });
-  const stroke = selected ? 'var(--color-accent)' : live?.count ? 'var(--color-success)' : isError ? 'rgba(240,82,79,0.7)' : '#5b5b69';
+  const stroke = selected ? 'var(--color-accent)' : live?.count ? 'var(--color-success)' : isError ? 'rgba(240,82,79,0.7)' : isAi ? '#8b7fd1' : '#5b5b69';
 
   return (
     <>
-      <BaseEdge id={id} path={path} style={{ stroke, strokeWidth: selected ? 2.5 : 2 }} interactionWidth={18} />
+      <BaseEdge
+        id={id}
+        path={path}
+        // Freshly built edges draw themselves (stroke-dashoffset animation on a normalized path length).
+        {...(fresh ? { pathLength: 1, className: 'ff-edge-draw' } : {})}
+        style={{ stroke, strokeWidth: selected ? 2.5 : 2, ...(isAi && !fresh ? { strokeDasharray: '6 5' } : {}) }}
+        interactionWidth={18}
+      />
       {running && live && live.key > 0 && (
         <g key={live.key}>
           {Array.from({ length: Math.min(MAX_PARTICLES, Math.max(1, live.count)) }).map((_, i) => (

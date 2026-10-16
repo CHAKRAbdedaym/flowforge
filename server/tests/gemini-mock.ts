@@ -43,6 +43,39 @@ export function answer(text: string, extra: Record<string, unknown> = {}): MockR
   };
 }
 
+/** One function call the model asks for. */
+export interface MockFunctionCall {
+  name: string;
+  args?: Record<string, unknown>;
+  id?: string;
+}
+
+/**
+ * An answer where the model calls one or more functions (parallel calls = several parts). The content has a thought part
+ * and `thoughtSignature`s like the real API: the agent must send it back unchanged. `content` is what was sent.
+ */
+export function functionCallReply(calls: MockFunctionCall[], extra: Record<string, unknown> = {}): MockReply & { content: Record<string, unknown> } {
+  const content = {
+    role: 'model',
+    parts: [
+      { text: 'I should call a tool.', thought: true, thoughtSignature: 'c2lnLXRob3VnaHQ=' },
+      ...calls.map((c, i) => ({
+        functionCall: { ...(c.id ? { id: c.id } : {}), name: c.name, args: c.args ?? {} },
+        // Only the first call of a parallel group carries a signature in the real API.
+        ...(i === 0 ? { thoughtSignature: 'c2lnLWNhbGwtMQ==' } : {}),
+      })),
+    ],
+  };
+  return {
+    content,
+    body: {
+      candidates: [{ content, finishReason: 'STOP', index: 0 }],
+      usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 4, totalTokenCount: 24 },
+      ...extra,
+    },
+  };
+}
+
 /** An error answer in the documented shape (numeric code + status + details). */
 export function apiError(status: number, message: string, details: Record<string, unknown>[] = [], statusName = 'ERROR'): MockReply {
   return { status, body: { error: { code: status, message, status: statusName, details } } };

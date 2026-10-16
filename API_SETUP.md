@@ -307,6 +307,17 @@ Click **Test**: you must see *The key works (model gemini-3.8-flash answered)*.
   products: Yes"): do not send private data.
 - Docs: <https://ai.google.dev/gemini-api/docs/api-key> · models: <https://ai.google.dev/gemini-api/docs/models>
 
+### AI Agent and AI Workflow Builder
+
+Both use the same **Google Gemini API** credential (or `GEMINI_API_KEY`): nothing else to set up.
+
+- **AI Agent**: the credential is chosen on its **Gemini Chat Model** sub-node. One message costs 1 to 8 Gemini
+  requests (one per step of the agent), so the free limit is reached faster than with the plain Gemini node.
+- **AI Workflow Builder** (prompt bar on the canvas): uses the default Gemini credential. Only the list of node
+  types and your sentence are sent to Gemini: no key, no credential, no existing workflow. Without a key it still
+  works, with ready-made templates ("Offline: closest template").
+- Verify: import the example **Website chatbot with AI Agent**, click **Chat** and ask for the weather in a city.
+
 ---
 
 ## Weather (Open-Meteo)
@@ -389,6 +400,9 @@ Run `npm run check` first: it names the integration that fails and why.
 | `The Gemini API key is not valid` | Wrong key | Create a new key at <https://aistudio.google.com/apikey> |
 | `Gemini rate limit reached` | Free limit of the minute or the day is used up | Wait, or choose `gemini-3.5-flash-lite`; see your limits in AI Studio |
 | `The model "…" does not exist` | Typo in the model, or the model was retired | Choose a model from the list of the node; update `GEMINI_MODEL` |
+| `No Chat Model is connected to the AI Agent` | The agent has no model | Click **+** under the agent's *Chat Model* slot and add a Gemini Chat Model |
+| `The agent did not reach an answer in 8 steps` | The model kept calling tools | Make the System Message more precise, remove a confusing tool |
+| The builder says **Offline: closest template** | No Gemini key, the free limit is reached, or Gemini's answer was not a valid workflow (the reason is shown) | Add the key or wait; the template is a working starting point |
 | `No place found for "…"` (Weather) | Unknown or misspelled city | Add the country (`Paris, France`) or use coordinates |
 | `The server "…" could not be found` / `Could not connect … in time` | No internet, or the network blocks the service | Check the connection; school Wi-Fi may block Telegram or SMTP: try a phone hotspot |
 | `SMTP authentication failed` | Gmail needs an App Password | See [Email](#email-smtp) |

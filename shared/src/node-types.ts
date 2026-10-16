@@ -9,6 +9,8 @@ export interface ConnectionSpec {
   /** Label shown on the handle, e.g. "true" / "false". */
   displayName?: string;
   required?: boolean;
+  /** AI slots: how many sub-nodes may be attached (default: any number). */
+  maxConnections?: number;
 }
 
 export type PropertyType =

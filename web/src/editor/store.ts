@@ -11,23 +11,35 @@ import type {
   SerializedError,
   ServerEvent,
   WorkflowData,
+  ConnectionType,
   WorkflowNode,
   WorkflowRecord,
   WorkflowSettings,
 } from '@flowforge/shared';
 import {
   addEdge,
+  AI_TYPES,
   autoLayout,
   copyPayload,
   edgeKey,
+  listAllEdges,
   listEdges,
   pastePayload,
   removeEdges,
   removeNodeConnections,
   renameInWorkflow,
   uniqueName,
+  SUB_GAP,
+  SUB_ROW,
   type EdgeRef,
 } from './graph';
+
+/** Where a new node is attached: the output of a node, or (with `slot`) an AI slot of a cluster node. */
+export interface ConnectFrom {
+  node: string;
+  output: number;
+  slot?: ConnectionType;
+}
 
 export type LiveStatus = 'running' | 'waiting' | NodeRunStatus;
 
@@ -107,12 +119,16 @@ export interface EditorState {
   /** Outputs computed by the server for nodes with dynamic outputs (by node id). */
   dynamicOutputs: Record<string, ConnectionSpec[]>;
   openNode: string | null;
-  creator: { open: boolean; connectFrom?: { node: string; output: number } };
+  creator: { open: boolean; connectFrom?: ConnectFrom };
   paletteOpen: boolean;
   helpOpen: boolean;
   logOpen: boolean;
   /** Test chat of a Chat Trigger (floating panel on the canvas). */
   chatOpen: boolean;
+  /** Node names and edge keys that were just drawn by the AI builder (they pop / draw themselves). */
+  fresh: string[];
+  /** Per node name: credentials that are not configured yet (warning badge on the canvas). */
+  missingCredentials: Record<string, string[]>;
   clipboard: string | null;
 }
 
@@ -144,6 +160,8 @@ const initial = (): EditorState => ({
   helpOpen: false,
   logOpen: false,
   chatOpen: false,
+  fresh: [],
+  missingCredentials: {},
   clipboard: null,
 });
 
@@ -242,7 +260,7 @@ export const editor = {
 
   addNode(
     type: NodeTypeInfo,
-    options: { position?: [number, number]; connectFrom?: { node: string; output: number } | null; parameters?: WorkflowNode['parameters'] } = {},
+    options: { position?: [number, number]; connectFrom?: ConnectFrom | null; parameters?: WorkflowNode['parameters'] } = {},
   ): WorkflowNode {
     const s = get();
     const name = uniqueName(type.defaults.name, new Set(s.nodes.map((n) => n.name)));
@@ -253,7 +271,14 @@ export const editor = {
       if (sel && sel.type !== 'flowforge.stickyNote') source = { node: sel.name, output: 0 };
     }
     const from = source ? s.nodes.find((n) => n.name === source!.node) : undefined;
+    // A sub-node added from an AI slot goes under its parent and plugs into that slot.
+    const slot = from ? source?.slot : undefined;
     let position = options.position;
+    if (!position && from && slot) {
+      const index = Math.max(0, AI_TYPES.indexOf(slot) - 1);
+      position = [from.position[0] + index * SUB_GAP, from.position[1] + SUB_ROW];
+      while (s.nodes.some((n) => Math.abs(n.position[0] - position![0]) < 60 && Math.abs(n.position[1] - position![1]) < 60)) position = [position[0] + SUB_GAP, position[1]];
+    }
     if (!position && from) {
       position = [from.position[0] + 240, from.position[1] + (source!.output > 0 ? source!.output * 140 : 0)];
     }
@@ -275,7 +300,11 @@ export const editor = {
     };
     commit((st) => ({
       nodes: [...st.nodes, node],
-      connections: from && type.inputs.length ? addEdge(st.connections, { source: from.name, output: source!.output, target: name, input: 0 }) : st.connections,
+      connections: from && slot
+        ? addEdge(st.connections, { source: name, output: 0, target: from.name, input: 0, type: slot })
+        : from && type.inputs.some((i) => i.type === 'main')
+          ? addEdge(st.connections, { source: from.name, output: source!.output, target: name, input: 0 })
+          : st.connections,
       selected: [node.id],
     }));
     return node;
@@ -395,7 +424,7 @@ export const editor = {
     if (!pasted || !pasted.nodes.length) return 0;
     commit((s) => {
       let connections = s.connections;
-      for (const e of listEdges(pasted.connections)) connections = addEdge(connections, e);
+      for (const e of listAllEdges(pasted.connections)) connections = addEdge(connections, e);
       return { nodes: [...s.nodes, ...pasted.nodes], connections, selected: pasted.nodes.map((n) => n.id) };
     });
     return pasted.nodes.length;
@@ -442,7 +471,7 @@ export const editor = {
     set({ openNode: name, creator: { open: false } });
   },
 
-  openCreator(connectFrom?: { node: string; output: number }) {
+  openCreator(connectFrom?: ConnectFrom) {
     set({ creator: { open: true, connectFrom }, paletteOpen: false });
   },
 
@@ -452,6 +481,24 @@ export const editor = {
 
   setUi(patch: Partial<Pick<EditorState, 'paletteOpen' | 'helpOpen' | 'logOpen' | 'settingsOpen' | 'chatOpen'>>) {
     set(patch);
+  },
+
+  setMissingCredentials(missingCredentials: EditorState['missingCredentials']) {
+    set({ missingCredentials });
+  },
+
+  /**
+   * AI builder: one drawing step (the steps of one build merge into a single undo step).
+   * `fresh` lists the node names / edge keys that were just added: they animate, then `settle()` clears them.
+   */
+  buildStep(patch: Partial<Pick<EditorState, 'nodes' | 'connections' | 'name' | 'pinData'>>, fresh: string[] = []) {
+    commit(() => ({ ...patch, selected: [] }), 'ai-build');
+    set({ fresh: [...get().fresh, ...fresh] });
+  },
+
+  settle(names: string[]) {
+    const done = new Set(names);
+    set({ fresh: get().fresh.filter((f) => !done.has(f)) });
   },
 
   // ── execution ──────────────────────────────────────────────────────────

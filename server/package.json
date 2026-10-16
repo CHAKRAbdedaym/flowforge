@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
     "@flowforge/shared": "0.1.0",
     "@jitl/quickjs-wasmfile-release-sync": "^0.32.0",
     "acorn": "^8.19.0",
@@ -24,6 +25,7 @@
     "jmespath": "^0.16.0",
     "luxon": "^3.7.2",
     "marked": "^18.1.0",
+    "mathjs": "^15.2.0",
     "nodemailer": "^10.1.0",
     "qrcode": "^1.5.4",
     "quickjs-emscripten-core": "^0.32.0",

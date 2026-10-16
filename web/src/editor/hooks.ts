@@ -1,6 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useReactFlow } from '@xyflow/react';
 import type { NodeTypeInfo } from '@flowforge/shared';
+import { fetchMissingCredentials } from '../lib/ai-api';
+import { credentialsKey } from '../lib/credentials-api';
 import { wsClient, useWsStore } from '../lib/ws';
 import { completeExecution, executeWorkflow, save } from './actions';
 import { addSticky } from './canvas/Canvas';
@@ -126,4 +129,31 @@ export function useEditorShortcuts(types: Map<string, NodeTypeInfo>) {
       window.removeEventListener('paste', onPaste);
     };
   }, [rf, types]);
+}
+
+/**
+ * Keeps the "credential missing" badges of the canvas up to date: asks the server which nodes still need a
+ * credential whenever the nodes (type, selected credential, authentication) or the saved credentials change.
+ */
+export function useMissingCredentials() {
+  const signature = useEditor((s) =>
+    JSON.stringify(s.nodes.map((n) => [n.name, n.type, n.credentials ?? null, n.disabled ?? false, (n.parameters as { authentication?: unknown }).authentication ?? null])),
+  );
+  // The signature changes on every keystroke of a rename: wait until it is stable.
+  const [stable, setStable] = useState(signature);
+  useEffect(() => {
+    const timer = setTimeout(() => setStable(signature), 400);
+    return () => clearTimeout(timer);
+  }, [signature]);
+  const query = useQuery({
+    queryKey: [...credentialsKey, 'missing', stable],
+    queryFn: () => fetchMissingCredentials(useEditor.getState().nodes),
+    staleTime: 15_000,
+  });
+  useEffect(() => {
+    if (!query.data) return;
+    const map: Record<string, string[]> = {};
+    for (const m of query.data.missing) (map[m.node] ??= []).push(m.displayName);
+    editor.setMissingCredentials(map);
+  }, [query.data]);
 }

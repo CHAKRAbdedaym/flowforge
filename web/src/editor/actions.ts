@@ -1,7 +1,8 @@
 import { errorMessage } from '../lib/api';
 import { toast } from '../lib/toast';
 import type { NodeTypeInfo } from '@flowforge/shared';
-import { isTriggerType } from '../lib/node-types';
+import { aiOutput, isTriggerType } from '../lib/node-types';
+import { listAllEdges } from './graph';
 import {
   activateWorkflow,
   cancelTestListen,
@@ -134,6 +135,14 @@ export const executeStep = (nodeName: string) => {
     // A chat is tested by chatting: close the node panel and open the test chat.
     editor.openPanel(null);
     return editor.setUi({ chatOpen: true });
+  }
+  // A sub-node (chat model, memory, tool) has no run of its own: its parent runs and uses it.
+  const state = useEditor.getState();
+  const node = state.nodes.find((n) => n.name === nodeName);
+  if (node && aiOutput(nodeTypes.get(node.type))) {
+    const parent = listAllEdges(state.connections).find((e) => e.source === nodeName && e.type && e.type !== 'main')?.target;
+    if (!parent) return toast.error('This node is not attached', 'Connect it to a slot under an AI Agent, then run the agent.');
+    return start(parent);
   }
   const kind = triggerKind(nodeName);
   return kind && kind !== 'manual' ? listenForTestEvent(nodeName) : start(nodeName);

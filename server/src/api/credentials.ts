@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { CredentialInput, CredentialTestRequest } from '@flowforge/shared';
+import type { CredentialInput, CredentialTestRequest, WorkflowNode } from '@flowforge/shared';
+import { activeCredentialTypes } from '../credentials/check.js';
+import { MissingCredentialError } from '../engine/errors.js';
 import type { AppServices } from '../app.js';
 import { notFound } from '../http/errors.js';
 
@@ -16,6 +18,11 @@ const UpdateSchema = z.object({
   type: z.string().optional(),
   data: z.record(z.string(), Value).optional(),
   isDefault: z.boolean().optional(),
+});
+const MissingSchema = z.object({
+  nodes: z
+    .array(z.object({ name: z.string(), type: z.string(), parameters: z.record(z.string(), z.unknown()).optional(), credentials: z.record(z.string(), z.unknown()).optional(), disabled: z.boolean().optional() }))
+    .max(500),
 });
 const TestSchema = z.object({
   type: z.string().min(1),
@@ -38,6 +45,25 @@ export function credentialsRouter(s: AppServices): Router {
   });
 
   // Declared before "/:id" routes.
+  // Which nodes of a workflow still need a credential (warning badges in the editor). Returns names only.
+  router.post('/missing', (req, res) => {
+    const { nodes } = MissingSchema.parse(req.body ?? {});
+    const missing: { node: string; credentialType: string; displayName: string }[] = [];
+    for (const raw of nodes) {
+      const node = raw as unknown as WorkflowNode;
+      const type = s.registry.get(node.type);
+      if (!type || node.disabled) continue;
+      for (const credentialType of activeCredentialTypes(node, type)) {
+        try {
+          service.resolve(node, credentialType);
+        } catch (err) {
+          if (err instanceof MissingCredentialError) missing.push({ node: node.name, credentialType, displayName: service.types().find((t) => t.name === credentialType)?.displayName ?? credentialType });
+        }
+      }
+    }
+    res.json({ missing });
+  });
+
   router.post('/test', async (req, res) => {
     const body = TestSchema.parse(req.body ?? {});
     res.json(await service.test(body as CredentialTestRequest));

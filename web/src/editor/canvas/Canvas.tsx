@@ -15,9 +15,9 @@ import {
   type EdgeChange,
 } from '@xyflow/react';
 import { LayoutGrid, Maximize, Minus, MousePointerClick, Plus, StickyNote } from 'lucide-react';
-import type { NodeTypeInfo, WorkflowNode } from '@flowforge/shared';
-import { fetchOutputs, isTriggerType, staticOutputs } from '../../lib/node-types';
-import { edgeKey, listEdges, type EdgeRef } from '../graph';
+import type { ConnectionType, NodeTypeInfo, WorkflowNode } from '@flowforge/shared';
+import { aiSlots, fetchOutputs, isTriggerType, staticOutputs } from '../../lib/node-types';
+import { edgeKey, listAllEdges, type EdgeRef } from '../graph';
 import { editor, useEditor } from '../store';
 import { FlowEdge } from './FlowEdge';
 import { StickyNoteCard } from './StickyNoteCard';
@@ -31,6 +31,12 @@ const nodeTypes = { workflow: WorkflowNodeCard, sticky: StickyNoteCard };
 const edgeTypes = { flow: FlowEdge };
 
 const handleIndex = (handle: string | null | undefined) => Number(String(handle ?? '').split('-')[1] ?? 0);
+
+/** "sub-ai_tool" (top of a sub-node) / "slot-ai_tool" (under a cluster node) → "ai_tool". */
+const slotOf = (handle: string | null | undefined): ConnectionType | null => {
+  const match = /^(?:sub|slot)-(ai_\w+)$/.exec(String(handle ?? ''));
+  return match ? (match[1] as ConnectionType) : null;
+};
 
 /** Keeps outputs of Switch/Filter (computed on the server from their parameters) up to date. */
 function useDynamicOutputs(types: Map<string, NodeTypeInfo>) {
@@ -97,7 +103,7 @@ export function Canvas({ types }: { types: Map<string, NodeTypeInfo> }) {
 
   const rfEdges: Edge[] = useMemo(
     () =>
-      listEdges(connections).flatMap((e) => {
+      listAllEdges(connections).flatMap((e) => {
         const source = byName.get(e.source);
         const target = byName.get(e.target);
         if (!source || !target) return [];
@@ -108,8 +114,9 @@ export function Canvas({ types }: { types: Map<string, NodeTypeInfo> }) {
             id: key,
             source: source.id,
             target: target.id,
-            sourceHandle: `out-${e.output}`,
-            targetHandle: `in-${e.input}`,
+            // AI connections go from the top of a sub-node to a slot under its parent.
+            sourceHandle: e.type && e.type !== 'main' ? `sub-${e.type}` : `out-${e.output}`,
+            targetHandle: e.type && e.type !== 'main' ? `slot-${e.type}` : `in-${e.input}`,
             type: 'flow',
             selected: selectedEdges.has(key),
             data: { ref: e, key, error: outputs[e.output]?.displayName === 'error' },
@@ -157,9 +164,25 @@ export function Canvas({ types }: { types: Map<string, NodeTypeInfo> }) {
       const source = s.nodes.find((n) => n.id === c.source);
       const target = s.nodes.find((n) => n.id === c.target);
       if (!source || !target) return null;
+      const slot = slotOf(c.sourceHandle);
+      if (slot) return { source: source.name, output: 0, target: target.name, input: 0, type: slot };
       return { source: source.name, output: handleIndex(c.sourceHandle), target: target.name, input: handleIndex(c.targetHandle) };
     },
     [],
+  );
+
+  /** Data handles connect to data handles; a sub-node only plugs into a free slot of its own kind. */
+  const canConnect = useCallback(
+    (sourceHandle: string | null | undefined, targetHandle: string | null | undefined, targetId: string) => {
+      const [from, to] = [slotOf(sourceHandle), slotOf(targetHandle)];
+      if (!from && !to) return true;
+      if (from !== to || !String(sourceHandle).startsWith('sub-') || !String(targetHandle).startsWith('slot-')) return false;
+      const state = useEditor.getState();
+      const target = state.nodes.find((n) => n.id === targetId);
+      const max = aiSlots(target ? types.get(target.type) : undefined).find((slot) => slot.type === to)?.maxConnections;
+      return max === undefined || listAllEdges(state.connections).filter((e) => e.target === target?.name && e.type === to).length < max;
+    },
+    [types],
   );
 
   const onConnect = useCallback(
@@ -214,7 +237,7 @@ export function Canvas({ types }: { types: Map<string, NodeTypeInfo> }) {
             if (node && node.type !== STICKY) editor.openPanel(node.name);
           }}
           onPaneClick={() => editor.closeCreator()}
-          isValidConnection={(c) => c.source !== c.target}
+          isValidConnection={(c) => c.source !== c.target && canConnect(c.sourceHandle, c.targetHandle, c.target)}
           deleteKeyCode={['Delete', 'Backspace']}
           selectionOnDrag
           selectionMode={SelectionMode.Partial}

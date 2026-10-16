@@ -5,7 +5,22 @@ import { CredentialError, NodeOperationError, WaitSignal, toFlowError } from './
 import type { ExpressionEngine, ExpressionScope } from './expressions/engine.js';
 import { getDefault, getPath, isNoExpression } from './params.js';
 import { resolvePairedItem } from './paired-items.js';
-import type { ChatMemory, ChatMemoryStore, CredentialsProvider, ExecuteContext, NodeHelpers, NodeType, ResolvedCredential, SubWorkflowRequest, WebhookResponse } from './types.js';
+import type {
+  AiChatModel,
+  AiConnectionType,
+  AiMemory,
+  AiTool,
+  ChatMemory,
+  ChatMemoryStore,
+  CredentialsProvider,
+  ExecuteContext,
+  NodeHelpers,
+  NodeType,
+  ResolvedCredential,
+  SubWorkflowRequest,
+  SuppliedData,
+  WebhookResponse,
+} from './types.js';
 
 /** Capabilities the execution service gives to nodes (absent in plain test runs). */
 export interface ExecutionServices {
@@ -38,6 +53,8 @@ export interface NodeContextOptions {
   filesRoot?: string;
   instanceSettings?: { get(key: string): unknown };
   chatMemory?: ChatMemoryStore;
+  /** Given by the runner: what the sub-nodes attached to an AI slot of this node supply (already recording their runs). */
+  supply?(type: AiConnectionType, itemIndex: number): Promise<SuppliedData[]>;
 }
 
 export class NodeExecutionContext implements ExecuteContext {
@@ -222,6 +239,22 @@ export class NodeExecutionContext implements ExecuteContext {
       append: (turns) => store.append(key, turns),
       clear: () => store.clear(key),
     };
+  }
+
+  private supplied(type: AiConnectionType, itemIndex: number): Promise<SuppliedData[]> {
+    return this.o.supply ? this.o.supply(type, itemIndex) : Promise.resolve([]);
+  }
+
+  async getAiChatModel(itemIndex = 0): Promise<AiChatModel | undefined> {
+    return (await this.supplied('ai_languageModel', itemIndex))[0] as AiChatModel | undefined;
+  }
+
+  async getAiMemory(itemIndex = 0): Promise<AiMemory | undefined> {
+    return (await this.supplied('ai_memory', itemIndex))[0] as AiMemory | undefined;
+  }
+
+  async getAiTools(itemIndex = 0): Promise<AiTool[]> {
+    return (await this.supplied('ai_tool', itemIndex)) as AiTool[];
   }
 
   async getCredentials(type: string): Promise<ResolvedCredential> {

@@ -81,10 +81,25 @@ execution id immediately, `startNode=<trigger>` picks the trigger. Full details:
 - `npm run check` makes one real call per integration and prints `OK`, `FAIL` (with the reason) or `SKIP`
   (with what to set where). Add `-- --send` to also post a test message in Discord.
 - A node without its key shows a clear error with an **Open Credentials** button. It never crashes.
-- **Workflows → Examples** has five ready workflows: contact form → emails, contact form → Discord + email,
-  daily weather email, Telegram `/weather` assistant, website chatbot with Gemini.
+- **Workflows → Examples** has seven ready workflows: contact form → emails, contact form → Discord + email,
+  daily weather email, Telegram `/weather` assistant, website chatbot with Gemini, website chatbot with an AI
+  Agent, Telegram AI assistant.
 - The Telegram Trigger uses long polling: no public URL is needed. Only one program can read a bot, so do not
   use the same bot in n8n at the same time.
+
+## AI Agent and AI Workflow Builder
+
+- **AI Agent**: add the node, then plug sub-nodes into the three slots under it: a **Gemini Chat Model**
+  (required), a **Simple Memory** (remembers each chat session) and any number of **tools** (Weather Tool,
+  Calculator, HTTP Request Tool, Code Tool). The model decides when to call a tool; the agent stops after at most
+  8 steps. In an execution every sub-node shows what it did (the model's turns, the memory, each tool call).
+- **AI Workflow Builder**: the bar at the top of the canvas ("Describe your automation…"). Type a sentence or
+  click a suggestion: the workflow is drawn node by node. With a Gemini key the result is labelled
+  **Built with Gemini**; without a key, or when Gemini fails, you get the closest ready-made template labelled
+  **Offline: closest template**. A node that still needs a credential shows a yellow warning sign.
+- Both need only the Gemini key ([API_SETUP.md#google-gemini](API_SETUP.md#google-gemini)). See
+  [need.md](need.md) section 2b for what works offline.
+- Examples: "Website chatbot with AI Agent" and "Telegram AI assistant (Agent + memory + tools)".
 
 ## Open FlowForge from a phone
 
