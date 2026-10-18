@@ -223,6 +223,14 @@ export class NodeExecutionContext implements ExecuteContext {
     return this.o.filesRoot;
   }
 
+  getVariables(): Record<string, string> {
+    return { ...this.o.variables };
+  }
+
+  getEnv(): Record<string, string> | null {
+    return this.o.env ? { ...this.o.env } : null;
+  }
+
   getInstanceSetting(key: string): unknown {
     return this.o.instanceSettings?.get(key);
   }

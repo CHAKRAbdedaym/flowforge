@@ -9,3 +9,5 @@ export * from './credentials.js';
 export * from './forms.js';
 export * from './settings.js';
 export * from './ai.js';
+export * from './product.js';
+export * from './version-diff.js';

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { ChevronLeft, Keyboard, Play, Save, Settings2, Square } from 'lucide-react';
+import { ChevronLeft, History, Keyboard, MessageSquarePlus, Play, Save, Settings2, Square } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { cn } from '../components/ui/cn';
 import { executeWorkflow, save, stopCurrent } from './actions';
 import { ActiveToggle } from './ActiveToggle';
+import { HistoryDrawer } from './HistoryDrawer';
 import { editor, isRunning, useEditor } from './store';
 
 function WorkflowName() {
@@ -45,6 +46,14 @@ export function TopBar() {
   const status = useEditor((s) => s.execution.status);
   const running = isRunning(status);
   const [saving, setSaving] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [note, setNote] = useState('');
+  const doSave = async (n?: string) => {
+    setSaving(true);
+    await save(n);
+    setSaving(false);
+  };
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-panel px-3">
       <Link to="/workflows" className="flex items-center gap-1 rounded px-1.5 py-1 text-[12.5px] text-muted hover:bg-panel-3 hover:text-fg">
@@ -72,6 +81,15 @@ export function TopBar() {
         >
           <Settings2 size={16} />
         </button>
+        <button
+          type="button"
+          title="Version history"
+          data-testid="open-history"
+          onClick={() => setHistoryOpen((o) => !o)}
+          className={cn('rounded p-2 hover:bg-panel-3 hover:text-fg', historyOpen ? 'text-fg' : 'text-subtle')}
+        >
+          <History size={16} />
+        </button>
         <button type="button" title="Keyboard shortcuts (?)" onClick={() => editor.setUi({ helpOpen: true })} className="rounded p-2 text-subtle hover:bg-panel-3 hover:text-fg">
           <Keyboard size={16} />
         </button>
@@ -81,14 +99,14 @@ export function TopBar() {
           icon={<Save size={14} />}
           loading={saving}
           data-testid="save-workflow"
-          onClick={async () => {
-            setSaving(true);
-            await save();
-            setSaving(false);
-          }}
+          title="Save (Shift+click: save with a note)"
+          onClick={(e) => (e.shiftKey ? setNoteOpen(true) : void doSave())}
         >
           Save
         </Button>
+        <button type="button" title="Save with note…" data-testid="save-with-note" onClick={() => setNoteOpen(true)} className="rounded p-2 text-subtle hover:bg-panel-3 hover:text-fg">
+          <MessageSquarePlus size={16} />
+        </button>
         {running ? (
           <Button variant="danger" size="sm" icon={<Square size={13} />} data-testid="stop-execution" onClick={() => void stopCurrent()}>
             Stop
@@ -99,6 +117,38 @@ export function TopBar() {
           </Button>
         )}
       </div>
+      {historyOpen && <HistoryDrawer onClose={() => setHistoryOpen(false)} />}
+      {noteOpen && (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/55" onMouseDown={(e) => e.target === e.currentTarget && setNoteOpen(false)}>
+          <form
+            className="w-[420px] max-w-[92vw] rounded-xl border border-line-strong bg-panel p-5 shadow-2xl"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setNoteOpen(false);
+              void doSave(note.trim());
+              setNote('');
+            }}
+          >
+            <h2 className="text-[16px] font-semibold">Save with a note</h2>
+            <p className="mt-1 text-[13px] text-muted">The note is shown in the version history.</p>
+            <input
+              autoFocus
+              data-testid="version-note"
+              maxLength={200}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="What did you change?"
+              className="mt-3 h-9 w-full rounded border border-line-strong bg-panel-2 px-2 text-[13px] focus:border-accent focus:outline-none"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setNoteOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">Save</Button>
+            </div>
+          </form>
+        </div>
+      )}
     </header>
   );
 }

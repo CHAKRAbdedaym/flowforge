@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Connections, Item, WorkflowData, WorkflowNode, WorkflowRecord, WorkflowSettings, WorkflowSummary } from '@flowforge/shared';
+import type { Connections, ExecutionStatus, Item, WorkflowData, WorkflowNode, WorkflowRecord, WorkflowSettings, WorkflowSummary } from '@flowforge/shared';
 import type { DB } from '../index.js';
 
 interface Row {
@@ -48,9 +48,27 @@ export class WorkflowsRepo {
   constructor(private readonly db: DB) {}
 
   list(): WorkflowSummary[] {
+    // One query for the rows, one for all tags, one for the latest execution of every workflow (no N+1).
     const rows = this.db
       .prepare('SELECT id, name, active, nodes, created_at, updated_at, activation_error, trigger_error, trigger_error_at FROM workflows ORDER BY updated_at DESC')
       .all() as Row[];
+    const tagRows = this.db
+      .prepare('SELECT wt.workflow_id AS wid, t.id AS id, t.name AS name FROM workflow_tags wt JOIN tags t ON t.id = wt.tag_id ORDER BY t.name COLLATE NOCASE')
+      .all() as Array<{ wid: string; id: string; name: string }>;
+    const tagsBy = new Map<string, Array<{ id: string; name: string }>>();
+    for (const t of tagRows) {
+      const list = tagsBy.get(t.wid) ?? [];
+      list.push({ id: t.id, name: t.name });
+      tagsBy.set(t.wid, list);
+    }
+    const lastRows = this.db
+      .prepare(
+        `SELECT e.workflow_id AS wid, e.status AS status, COALESCE(e.started_at, e.created_at) AS at
+         FROM executions e
+         WHERE e.workflow_id IS NOT NULL AND e.id = (SELECT MAX(x.id) FROM executions x WHERE x.workflow_id = e.workflow_id)`,
+      )
+      .all() as Array<{ wid: string; status: ExecutionStatus; at: string }>;
+    const lastBy = new Map(lastRows.map((r) => [r.wid, r]));
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
@@ -61,6 +79,9 @@ export class WorkflowsRepo {
       activationError: r.activation_error,
       triggerError: r.trigger_error,
       triggerErrorAt: r.trigger_error_at,
+      tags: tagsBy.get(r.id) ?? [],
+      lastExecutionStatus: lastBy.get(r.id)?.status ?? null,
+      lastExecutionAt: lastBy.get(r.id)?.at ?? null,
     }));
   }
 

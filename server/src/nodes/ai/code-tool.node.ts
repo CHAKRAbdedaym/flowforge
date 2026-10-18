@@ -17,10 +17,12 @@ return { text, length: text.length, words: text.split(/\\s+/).filter(Boolean).le
 const MAX_RESULT_CHARS = 20_000;
 
 /** Wraps the user's code: `input` and `query` in scope, the result comes back as a JSON string. */
-function buildSource(code: string, input: JsonObject, query: unknown): { source: string; lineOffset: number } {
+function buildSource(code: string, input: JsonObject, query: unknown, vars: Record<string, string>, env: Record<string, string> | null): { source: string; lineOffset: number } {
   const head = `"use strict";
 const input = ${JSON.stringify(input)};
 const query = ${JSON.stringify(query === undefined ? null : query)};
+const $vars = ${JSON.stringify(vars)};
+const $env = ${env === null ? "new Proxy({}, { get: () => { throw new Error('Access to $env is disabled'); } })" : JSON.stringify(env)};
 const __ffLogs = [];
 const __ffFormat = (v) => { if (typeof v === 'string') return v; try { return JSON.stringify(v); } catch (e) { return String(v); } };
 const console = { log: (...a) => { if (__ffLogs.length < 50) __ffLogs.push(a.map(__ffFormat).join(' ')); } };
@@ -81,7 +83,7 @@ export default defineNode({
     },
     {
       name: 'notice',
-      displayName: 'Available: input (the arguments object), query (the first text argument), console.log(). Not available: require, fetch, process, files. Return a JSON value.',
+      displayName: 'Available: input (the arguments object), query (the first text argument), $vars, $env, console.log(). Not available: require, fetch, process, files. Return a JSON value.',
       type: 'notice',
       default: '',
     },
@@ -91,6 +93,8 @@ export default defineNode({
     const code = String(ctx.getRawParameter('jsCode') ?? '');
     if (!code.trim()) throw new NodeOperationError('The JavaScript code is empty', { itemIndex, hint: 'Write the code the tool should run and end it with a "return".' });
     const parameters = readDeclaredParameters(ctx, itemIndex);
+    const vars = ctx.getVariables();
+    const env = ctx.getEnv();
 
     return {
       name,
@@ -108,7 +112,7 @@ export default defineNode({
           input[p.name] = value;
         }
         const query = parameters.map((p) => input[p.name]).find((v) => typeof v === 'string');
-        const { source, lineOffset } = buildSource(code, input, query);
+        const { source, lineOffset } = buildSource(code, input, query, vars, env);
 
         let raw: string;
         try {

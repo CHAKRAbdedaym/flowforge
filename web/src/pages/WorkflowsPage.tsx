@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router';
-import { Download, LayoutTemplate, Pencil, Plus, Trash2, Workflow, X } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Copy, Download, FileDown, FileUp, LayoutTemplate, Pencil, Plus, Search, Tag as TagIcon, Trash2, Workflow, X } from 'lucide-react';
 import type { WorkflowRecord, WorkflowSummary } from '@flowforge/shared';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Alert } from '../components/ui/Alert';
@@ -14,16 +14,32 @@ import { toast } from '../lib/toast';
 import { useTitle } from '../lib/useTitle';
 import { cn } from '../components/ui/cn';
 import { wsClient } from '../lib/ws';
-import { useCreateWorkflow, useDeleteWorkflow, useRenameWorkflow, useToggleActive, useWorkflows, workflowsKey } from '../lib/workflows-api';
+import {
+  downloadWorkflowExport,
+  useBulkDelete,
+  useCreateWorkflow,
+  useDeleteWorkflow,
+  useDuplicateWorkflow,
+  useRenameWorkflow,
+  useTags,
+  useToggleActive,
+  useWorkflows,
+  workflowsKey,
+} from '../lib/workflows-api';
+import { ImportDialog, TagManager, TagPicker } from './workflows/Dialogs';
+import { filterWorkflows, readFilters, statusDot, writeFilters, type ActiveFilter, type SortKey } from './workflows/filter';
 import { PageHeader } from './PageHeader';
 
-function Row({ wf }: { wf: WorkflowSummary }) {
+function Row({ wf, selected, onSelect }: { wf: WorkflowSummary; selected: boolean; onSelect(on: boolean): void }) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(wf.name);
   const [confirm, setConfirm] = useState(false);
   const rename = useRenameWorkflow();
   const remove = useDeleteWorkflow();
   const toggle = useToggleActive();
+  const duplicate = useDuplicateWorkflow();
+  const [picking, setPicking] = useState(false);
+  const dot = statusDot(wf.lastExecutionStatus);
   const problem = wf.active ? wf.triggerError : wf.activationError;
   const commit = () => {
     setRenaming(false);
@@ -33,7 +49,8 @@ function Row({ wf }: { wf: WorkflowSummary }) {
   };
   return (
     <div className="group flex items-center gap-4 border-b border-line px-5 py-3.5 last:border-b-0 hover:bg-panel-2/60" data-testid="workflow-row" data-name={wf.name}>
-      <Workflow size={18} className="shrink-0 text-accent-hover" />
+      <input type="checkbox" aria-label={`Select ${wf.name}`} data-testid="workflow-select" checked={selected} onChange={(e) => onSelect(e.target.checked)} className="size-4 shrink-0 accent-[var(--color-accent)]" />
+      <span className={cn('size-2.5 shrink-0 rounded-full', dot.cls)} title={dot.label + (wf.lastExecutionAt ? ` · ${timeAgo(wf.lastExecutionAt)}` : '')} data-testid="workflow-status-dot" data-status={wf.lastExecutionStatus ?? 'none'} />
       <div className="min-w-0 flex-1">
         {renaming ? (
           <input
@@ -59,6 +76,15 @@ function Row({ wf }: { wf: WorkflowSummary }) {
         <div className="text-[12px] text-subtle">
           {wf.nodeCount} node{wf.nodeCount === 1 ? '' : 's'} · updated {timeAgo(wf.updatedAt)} · created {new Date(wf.createdAt).toLocaleDateString()}
         </div>
+        {wf.tags && wf.tags.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1" data-testid="workflow-tags">
+            {wf.tags.map((t) => (
+              <span key={t.id} className="rounded-full border border-line-strong bg-panel-3 px-2 py-px text-[11px] text-muted" data-testid="workflow-tag">
+                {t.name}
+              </span>
+            ))}
+          </div>
+        )}
         {problem && (
           <div className="truncate text-[12px] text-danger" data-testid="workflow-row-error" title={problem}>
             {problem}
@@ -91,6 +117,33 @@ function Row({ wf }: { wf: WorkflowSummary }) {
         </button>
       </div>
       <div className="flex gap-1 opacity-60 group-hover:opacity-100">
+        <button
+          type="button"
+          title="Duplicate"
+          data-testid="workflow-duplicate"
+          disabled={duplicate.isPending}
+          onClick={() =>
+            duplicate.mutate(wf.id, {
+              onSuccess: (copy) => toast.success('Workflow duplicated', `"${copy.name}" was created.`),
+              onError: (err) => toast.error('Could not duplicate', errorMessage(err)),
+            })
+          }
+          className="rounded p-2 text-subtle hover:bg-panel-3 hover:text-fg disabled:opacity-50"
+        >
+          <Copy size={15} />
+        </button>
+        <button
+          type="button"
+          title="Export as JSON"
+          data-testid="workflow-export"
+          onClick={() => downloadWorkflowExport(wf.id, wf.name).catch((err) => toast.error('Could not export', errorMessage(err)))}
+          className="rounded p-2 text-subtle hover:bg-panel-3 hover:text-fg"
+        >
+          <FileDown size={15} />
+        </button>
+        <button type="button" title="Tags" data-testid="workflow-tags-edit" onClick={() => setPicking(true)} className="rounded p-2 text-subtle hover:bg-panel-3 hover:text-fg">
+          <TagIcon size={15} />
+        </button>
         <button type="button" title="Rename" data-testid="workflow-rename" onClick={() => setRenaming(true)} className="rounded p-2 text-subtle hover:bg-panel-3 hover:text-fg">
           <Pencil size={15} />
         </button>
@@ -98,6 +151,7 @@ function Row({ wf }: { wf: WorkflowSummary }) {
           <Trash2 size={15} />
         </button>
       </div>
+      {picking && <TagPicker workflowId={wf.id} name={wf.name} selected={(wf.tags ?? []).map((t) => t.id)} onClose={() => setPicking(false)} />}
       {confirm && (
         <ConfirmDialog
           title={`Delete "${wf.name}"?`}
@@ -184,6 +238,8 @@ function ExamplesDialog({ onClose }: { onClose(): void }) {
   );
 }
 
+const SELECT = 'h-9 rounded-md border border-line-strong bg-panel-2 px-2 text-[13px] focus:border-accent focus:outline-none';
+
 export function WorkflowsPage() {
   useTitle('Workflows');
   const client = useQueryClient();
@@ -191,14 +247,28 @@ export function WorkflowsPage() {
   useEffect(
     () =>
       wsClient.onEvent((e) => {
-        if (e.type.startsWith('workflow.')) void client.invalidateQueries({ queryKey: workflowsKey });
+        if (e.type.startsWith('workflow.') || e.type.startsWith('execution.')) void client.invalidateQueries({ queryKey: workflowsKey });
       }),
     [client],
   );
   const navigate = useNavigate();
   const workflows = useWorkflows();
+  const tags = useTags();
   const create = useCreateWorkflow();
+  const bulk = useBulkDelete();
   const [examples, setExamples] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const filters = useMemo(() => readFilters(params), [params]);
+  const setFilters = (patch: Partial<typeof filters>) => setParams((prev) => writeFilters({ ...readFilters(prev), ...patch }), { replace: true });
+  const visible = useMemo(() => (workflows.data ? filterWorkflows(workflows.data, filters) : []), [workflows.data, filters]);
+  const filtering = filters.q !== '' || filters.tags.length > 0 || filters.active !== 'all';
+  // Selection only keeps workflows that still exist.
+  const selectedIds = visible.filter((w) => selected.has(w.id)).map((w) => w.id);
+  const allSelected = visible.length > 0 && selectedIds.length === visible.length;
   const createAndOpen = () =>
     create.mutate(
       {},
@@ -215,6 +285,9 @@ export function WorkflowsPage() {
         subtitle="Create, open and organise your automations."
         actions={
           <div className="flex gap-2">
+            <Button variant="secondary" icon={<FileUp size={16} />} onClick={() => setImporting(true)} data-testid="open-import">
+              Import
+            </Button>
             <Button variant="secondary" icon={<LayoutTemplate size={16} />} onClick={() => setExamples(true)} data-testid="open-examples">
               Examples
             </Button>
@@ -225,6 +298,27 @@ export function WorkflowsPage() {
         }
       />
       {examples && <ExamplesDialog onClose={() => setExamples(false)} />}
+      {importing && <ImportDialog onClose={() => setImporting(false)} />}
+      {managing && <TagManager onClose={() => setManaging(false)} />}
+      {confirmBulk && (
+        <ConfirmDialog
+          title={`Delete ${selectedIds.length} workflow${selectedIds.length === 1 ? '' : 's'}?`}
+          message="The selected workflows are deleted permanently. Their past executions stay in the history."
+          confirmLabel="Delete"
+          danger
+          onCancel={() => setConfirmBulk(false)}
+          onConfirm={() => {
+            setConfirmBulk(false);
+            bulk.mutate(selectedIds, {
+              onSuccess: (res) => {
+                setSelected(new Set());
+                toast.success(`${res.deleted} workflow${res.deleted === 1 ? '' : 's'} deleted`);
+              },
+              onError: (err) => toast.error('Could not delete', errorMessage(err)),
+            });
+          }}
+        />
+      )}
       <div className="px-8 py-6">
         {workflows.isPending ? (
           <Spinner />
@@ -244,14 +338,113 @@ export function WorkflowsPage() {
               <Button variant="secondary" icon={<LayoutTemplate size={16} />} onClick={() => setExamples(true)}>
                 Start from an example
               </Button>
+              <Button variant="secondary" icon={<FileUp size={16} />} onClick={() => setImporting(true)}>
+                Import a file
+              </Button>
             </div>
           </Card>
         ) : (
-          <Card data-testid="workflow-list">
-            {workflows.data.map((wf) => (
-              <Row key={wf.id} wf={wf} />
-            ))}
-          </Card>
+          <>
+            <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="workflow-filters">
+              <div className="relative">
+                <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-subtle" />
+                <input
+                  data-testid="workflow-search"
+                  value={filters.q}
+                  onChange={(e) => setFilters({ q: e.target.value })}
+                  placeholder="Search by name or tag"
+                  className="h-9 w-64 rounded-md border border-line-strong bg-panel-2 pl-8 pr-3 text-[13px] focus:border-accent focus:outline-none"
+                />
+              </div>
+              <select aria-label="Status filter" data-testid="filter-active" className={SELECT} value={filters.active} onChange={(e) => setFilters({ active: e.target.value as ActiveFilter })}>
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <select aria-label="Sort" data-testid="filter-sort" className={SELECT} value={filters.sort} onChange={(e) => setFilters({ sort: e.target.value as SortKey })}>
+                <option value="updated">Last updated</option>
+                <option value="created">Newest created</option>
+                <option value="name">Name A-Z</option>
+              </select>
+              <Button variant="ghost" size="sm" icon={<TagIcon size={14} />} onClick={() => setManaging(true)} data-testid="manage-tags">
+                Manage tags
+              </Button>
+              {filtering && (
+                <Button variant="ghost" size="sm" icon={<X size={14} />} onClick={() => setFilters({ q: '', tags: [], active: 'all' })} data-testid="clear-filters">
+                  Clear filters
+                </Button>
+              )}
+            </div>
+            {tags.data && tags.data.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-1.5" data-testid="tag-filter">
+                {tags.data.map((t) => {
+                  const on = filters.tags.includes(t.id);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      aria-pressed={on}
+                      data-testid="tag-chip"
+                      data-name={t.name}
+                      onClick={() => setFilters({ tags: on ? filters.tags.filter((x) => x !== t.id) : [...filters.tags, t.id] })}
+                      className={cn('rounded-full border px-2.5 py-0.5 text-[12px] transition-colors', on ? 'border-accent bg-accent/20 text-accent-hover' : 'border-line-strong text-muted hover:text-fg')}
+                    >
+                      {t.name} <span className="text-subtle">{t.usageCount ?? 0}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {selectedIds.length > 0 && (
+              <div className="mb-3 flex items-center gap-3 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-[13px]" data-testid="bulk-bar">
+                <span>{selectedIds.length} selected</span>
+                <Button variant="danger" size="sm" icon={<Trash2 size={14} />} loading={bulk.isPending} onClick={() => setConfirmBulk(true)} data-testid="bulk-delete">
+                  Delete selected
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+                  Clear selection
+                </Button>
+              </div>
+            )}
+            {visible.length === 0 ? (
+              <Card className="px-6 py-12 text-center" data-testid="no-results">
+                <p className="text-[14px] font-medium">No workflow matches</p>
+                <p className="mt-1 text-[13px] text-muted">Change the search or clear the filters.</p>
+              </Card>
+            ) : (
+              <Card data-testid="workflow-list">
+                <div className="flex items-center gap-4 border-b border-line px-5 py-2 text-[12px] text-subtle">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all"
+                    data-testid="workflow-select-all"
+                    checked={allSelected}
+                    onChange={(e) => setSelected(e.target.checked ? new Set(visible.map((w) => w.id)) : new Set())}
+                    className="size-4 accent-[var(--color-accent)]"
+                  />
+                  <span>
+                    {visible.length} workflow{visible.length === 1 ? '' : 's'}
+                    {filtering ? ` of ${workflows.data.length}` : ''}
+                  </span>
+                </div>
+                {visible.map((wf) => (
+                  <Row
+                    key={wf.id}
+                    wf={wf}
+                    selected={selected.has(wf.id)}
+                    onSelect={(on) =>
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        if (on) next.add(wf.id);
+                        else next.delete(wf.id);
+                        return next;
+                      })
+                    }
+                  />
+                ))}
+              </Card>
+            )}
+          </>
         )}
       </div>
     </div>

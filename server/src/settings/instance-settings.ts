@@ -1,4 +1,4 @@
-import { DEFAULT_INSTANCE_SETTINGS, type InstanceSettings } from '@flowforge/shared';
+import { DEFAULT_INSTANCE_SETTINGS, type EffectiveSettings, type InstanceSettings } from '@flowforge/shared';
 import type { SettingsRepo } from '../db/repositories/settings.js';
 
 const KEY = (name: string) => `instance.${name}`;
@@ -9,7 +9,8 @@ export class InstanceSettingsService {
 
   all(): InstanceSettings {
     const out = { ...DEFAULT_INSTANCE_SETTINGS };
-    for (const name of Object.keys(out) as (keyof InstanceSettings)[]) out[name] = this.repo.get(KEY(name), DEFAULT_INSTANCE_SETTINGS[name]);
+    const target = out as Record<string, unknown>;
+    for (const name of Object.keys(out) as (keyof InstanceSettings)[]) target[name] = this.repo.get(KEY(name), DEFAULT_INSTANCE_SETTINGS[name]);
     return out;
   }
 
@@ -24,4 +25,17 @@ export class InstanceSettingsService {
     }
     return this.all();
   }
+}
+
+/** Settings page first, then the .env value (what GET /api/settings reports as `effective`). */
+export function effectiveSettings(
+  s: InstanceSettings,
+  config: { timezone: string; executionTimeoutMs: number; maxConcurrentExecutions: number; allowEnvAccess: boolean },
+): EffectiveSettings {
+  return {
+    timezone: s.timezone || config.timezone,
+    executionTimeoutSeconds: s.executionTimeoutSeconds > 0 ? s.executionTimeoutSeconds : Math.round(config.executionTimeoutMs / 1000),
+    maxConcurrentExecutions: s.maxConcurrentExecutions > 0 ? s.maxConcurrentExecutions : config.maxConcurrentExecutions,
+    allowEnvAccess: s.allowEnvAccess ?? config.allowEnvAccess,
+  };
 }

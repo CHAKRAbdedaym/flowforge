@@ -7,6 +7,7 @@ import { migrateLegacyWebhookAuth } from './credentials/legacy-webhook-auth.js';
 import { ExecutionService } from './engine/execution-service.js';
 import { getExpressionEngine } from './engine/expressions/engine.js';
 import { WorkflowRunner } from './engine/runner.js';
+import { effectiveSettings } from './settings/instance-settings.js';
 import { errorHandler } from './http/errors.js';
 import { staticFrontend } from './http/static.js';
 import { publicRouter } from './public/router.js';
@@ -16,6 +17,8 @@ import { WaitTracker } from './triggers/wait-tracker.js';
 import { WebhookRegistry } from './triggers/webhook-registry.js';
 import { WebhookService } from './triggers/webhook-service.js';
 import { WsHub } from './ws/hub.js';
+
+import { pruneExecutions } from './engine/pruning.js';
 
 export interface FlowForgeApp {
   app: Express;
@@ -44,6 +47,8 @@ export function createApp(ctx: AppContext): FlowForgeApp {
   const { config, logger } = ctx;
   mkdirSync(config.filesRoot, { recursive: true });
   const ws = new WsHub(ctx);
+  const liveSettings = () => effectiveSettings(ctx.settings.all(), config);
+  const currentTimezone = () => liveSettings().timezone;
   const runner = new WorkflowRunner({
     registry: ctx.registry,
     expressions: getExpressionEngine(),
@@ -62,11 +67,23 @@ export function createApp(ctx: AppContext): FlowForgeApp {
     logger,
     binaryStore: ctx.binaryStore,
     publisher: ws,
-    maxConcurrent: config.maxConcurrentExecutions,
+    maxConcurrent: liveSettings().maxConcurrentExecutions,
     timeoutMs: config.executionTimeoutMs,
     timezone: config.timezone,
     allowEnvAccess: config.allowEnvAccess,
     publicUrl: config.publicUrl,
+    runtime: () => {
+      const all = ctx.settings.all();
+      const eff = effectiveSettings(all, config);
+      return {
+        timezone: eff.timezone,
+        timeoutMs: eff.executionTimeoutSeconds * 1000,
+        allowEnvAccess: eff.allowEnvAccess,
+        variables: ctx.variablesRepo.asRecord(),
+        saveDataSuccess: all.saveDataSuccess,
+        saveDataError: all.saveDataError,
+      };
+    },
   });
   const webhookRegistry = new WebhookRegistry();
   const testListeners = new TestListeners({
@@ -76,7 +93,9 @@ export function createApp(ctx: AppContext): FlowForgeApp {
     logger,
     ws,
     publicUrl: config.publicUrl,
-    timezone: config.timezone,
+    get timezone() {
+      return currentTimezone();
+    },
     filesRoot: config.filesRoot,
     credentials: ctx.credentials,
   });
@@ -90,7 +109,9 @@ export function createApp(ctx: AppContext): FlowForgeApp {
     publicUrl: config.publicUrl,
     maxBodyBytes: config.webhookMaxBodyBytes,
     formMaxBodyBytes: config.formMaxBodyBytes,
-    timezone: config.timezone,
+    get timezone() {
+      return currentTimezone();
+    },
     credentials: ctx.credentials,
     onTestReceived: (reg, executionId) => testListeners.received(reg.workflowId, reg.nodeName, executionId),
   });
@@ -101,7 +122,9 @@ export function createApp(ctx: AppContext): FlowForgeApp {
     webhooks: webhookRegistry,
     logger,
     ws,
-    timezone: config.timezone,
+    get timezone() {
+      return currentTimezone();
+    },
     filesRoot: config.filesRoot,
     credentials: ctx.credentials,
   });
@@ -137,6 +160,10 @@ export function createApp(ctx: AppContext): FlowForgeApp {
   const server = createServer(app);
   ws.attach(server);
 
+  let pruneTimer: NodeJS.Timeout | undefined;
+  const runPrune = () =>
+    pruneExecutions({ repo: ctx.executionsRepo, binaryStore: ctx.binaryStore }, ctx.settings.all()).catch((err) => logger.error('Pruning executions failed', err));
+
   return {
     app,
     server,
@@ -156,8 +183,12 @@ export function createApp(ctx: AppContext): FlowForgeApp {
       }
       await activeWorkflows.init();
       waitTracker.init();
+      void runPrune();
+      pruneTimer = setInterval(() => void runPrune(), 10 * 60 * 1000);
+      pruneTimer.unref();
     },
     async close() {
+      if (pruneTimer) clearInterval(pruneTimer);
       testListeners.shutdown();
       waitTracker.shutdown();
       await activeWorkflows.shutdown();

@@ -221,7 +221,7 @@ test('Execute Command is disabled until the Settings toggle is switched on', asy
   await page.goto('/settings');
   await page.getByTestId('setting-executeCommandEnabled').click();
   await expect(page.getByTestId('setting-executeCommandEnabled')).toHaveAttribute('aria-checked', 'false');
-  expect(await (await page.request.get('/api/settings')).json()).toEqual({ executeCommandEnabled: false });
+  expect((await (await page.request.get('/api/settings')).json()).executeCommandEnabled).toBe(false);
   await page.goto(`/workflow/${id}`);
   await page.getByTestId('execute-workflow').click();
   await expectStatus(page, 'Execute Command', 'error');

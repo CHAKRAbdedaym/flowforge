@@ -1,10 +1,12 @@
 import { useEffect, useMemo } from 'react';
-import { useBlocker, useParams } from 'react-router';
+import { useBlocker, useParams, useSearchParams } from 'react-router';
 import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { FullScreenError, FullScreenLoader } from '../components/FullScreen';
-import { errorMessage } from '../lib/api';
+import type { ExecutionDetail } from '@flowforge/shared';
+import { api, errorMessage } from '../lib/api';
+import { fetchExecutions } from '../lib/executions-api';
 import { wsClient } from '../lib/ws';
 import { useNodeTypes } from '../lib/node-types';
 import { useTitle } from '../lib/useTitle';
@@ -83,15 +85,40 @@ function EditorShell({ list, byType }: { list: NodeTypeInfo[]; byType: Map<strin
   );
 }
 
+/** After a reload: colours, item counts and node outputs of the requested (or latest) execution come back. */
+async function restoreLastRun(workflowId: string, executionId: string | null) {
+  try {
+    let wanted = executionId;
+    if (!wanted) wanted = (await fetchExecutions({ workflowId, limit: 1 })).items[0]?.id ?? null;
+    if (!wanted) return;
+    const detail = await api<ExecutionDetail>(`/executions/${wanted}`);
+    const state = useEditor.getState();
+    // The user may have left, or started a run, while this was loading.
+    if (state.workflowId !== workflowId || state.lastExecutionId || state.execution.id) return;
+    if (['queued', 'running', 'waiting'].includes(detail.status)) return;
+    if (detail.workflowId && detail.workflowId !== workflowId) return;
+    const names = new Set(state.nodes.map((n) => n.name));
+    const runData = Object.fromEntries(Object.entries(detail.runData).filter(([name]) => names.has(name)));
+    editor.finishFromDetail({ ...detail, runData, events: detail.events.filter((ev) => names.has(ev.node)) });
+  } catch {
+    // Restoring is a convenience: the editor works without it.
+  }
+}
+
 export function EditorPage() {
   const { id } = useParams();
+  const [search] = useSearchParams();
+  const requestedExecution = search.get('execution');
   const workflow = useWorkflow(id);
   const nodeTypes = useNodeTypes();
   const loadedId = useEditor((s) => s.workflowId);
 
   useEffect(() => {
-    if (workflow.data && workflow.data.id !== useEditor.getState().workflowId) editor.load(workflow.data);
-  }, [workflow.data]);
+    if (workflow.data && workflow.data.id !== useEditor.getState().workflowId) {
+      editor.load(workflow.data);
+      void restoreLastRun(workflow.data.id, requestedExecution);
+    }
+  }, [workflow.data]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => editor.reset(), []);
 
   const types = useMemo(() => nodeTypes.data, [nodeTypes.data]);

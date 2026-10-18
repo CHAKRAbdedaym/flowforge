@@ -13,7 +13,7 @@
 ## Foundation
 - [x] P0 `npm install` then `npm start` runs backend + built frontend on port 5679 (Ph 0) — e2e: `web/e2e/phase0-auth-shell.spec.ts` (runs the built app); manual: fresh install, first start builds in 12 s, second start skips the build, clear messages for busy port / invalid `.env`
 - [x] P0 `npm run dev` with hot reload (Ph 0) — manual: Vite on :5173 proxies `/api`, `/webhook`, `/ws`; SPA deep links; server restarts on file change
-- [x] P0 `npm test` (typecheck + unit/API tests, offline) (Ph 0) — 48 tests (shared 9, server 39)
+- [x] P0 `npm test` (typecheck + unit/API tests, offline) (Ph 0) — 48 tests at Ph 0; Ph 7: 887 tests (shared 24, server 814, web 49) + 45 Playwright tests
 - [x] P0 SQLite driver: better-sqlite3 12.9.0 (prebuilt binaries for Node 20/22/24) with automatic fallback to built-in `node:sqlite` on Node ≥ 22.13 (Ph 0) — test: `server/tests/driver.test.ts`; full server suite passes on Node 20.18 (better-sqlite3) and Node 22.22 (fallback). Not yet tried on Node 24/26.
 - [x] P0 SQLite database with ordered migrations, created automatically in `./data` (Ph 0) — test: `server/tests/db.test.ts` (idempotent, failed migration rolls back fully)
 - [x] P0 Dark app shell with sidebar navigation, n8n-like look (Ph 0) — e2e: every sidebar page, 404 page, collapsible sidebar remembered; manual: screenshots reviewed
@@ -71,7 +71,7 @@
 - [x] P0 Particles on edges + item-count labels + execution log panel (Ph 2) — data preview on hover / polish in Ph 8 — e2e: `web/e2e/editor-*.spec.ts`; unit: `web/tests/*.test.ts`
 - [x] P0 Activate / deactivate workflow with visible status and activation errors (editor + workflows list) (Ph 3) — test: `server/tests/triggers.test.ts` (lifecycle, boot, no leaks); e2e: `web/e2e/editor-triggers.spec.ts`
 
-- [x] P2 Workflows list: create, open, rename, delete (Ph 2) — e2e: `editor-canvas.spec.ts` (tags/search/duplicate in Ph 7)
+- [x] P2 Workflows list: create, open, rename, delete (Ph 2) — e2e: `editor-canvas.spec.ts` (tags/search/duplicate: see Product)
 - [x] P0 Fallback JSON editor for unknown parameter types (Ph 2) — e2e: `editor-triggers.spec.ts` (a parameter type the editor does not know, simulated by rewriting `/api/node-types`; the JSON stays editable)
 - [x] P0 Error card "Open Credentials" button (Ph 2, 3B) — e2e: `editor-credentials-form.spec.ts` (missing credential → dialog creates it and selects it on the node; wrong password → dialog opens the failing credential for editing)
 
@@ -195,15 +195,15 @@
 - [x] P1 Builder: offline fallback (no key, 429, timeout, 5xx, blocked or invalid answer) to the closest template by keywords + TF-IDF, labelled "Offline: closest template" with the reason; weak matches are flagged (Ph 6) — test: `ai-builder.test.ts` (10 sample prompts), `ai-builder-suggestions.test.ts` (the 6 suggestions pick the right template); manual: real run without a key from a suggestion chip
 
 ## Product
-- [ ] P1 Version history (snapshot per save, restore) (Ph 7)
-- [ ] P2 Workflows list: tags, search, duplicate, delete (Ph 7)
-- [ ] P2 Import / export workflow JSON (Ph 7)
-- [ ] P2 Executions list with filters + per-node input/output detail (Ph 7)
-- [ ] P2 Retry a failed execution (Ph 7)
-- [ ] P2 Variables (`$vars`) page (Ph 7)
-- [ ] P2 Settings page (timezone, timeout, concurrency, pruning, `$env` access, Execute Command toggle) (Ph 7) — the page exists since Ph 4 with the Execute Command toggle only (`settings.test.ts`, e2e); the other settings come in Ph 7
-- [ ] P2 Templates gallery (Ph 7)
-- [ ] P2 Dashboard with charts (executions per day, success rate, durations, top workflows) (Ph 7)
+- [x] P1 Version history: a version per save that changes something (pinData ignored, max 100), optional note (Shift+click Save), history drawer with +added −removed ~changed per version, preview, restore = new version (re-activates an active workflow) (Ph 7) — test: `versions.test.ts`, `shared/tests/version-diff.test.ts` (no secret in versions); manual: history drawer opened in the editor (screenshot). Restore was clicked only through the API tests, not in the UI
+- [x] P2 Workflows list: search (name + tags), tags (create / rename / delete / assign / filter), active filter, sort, status dot = last execution, duplicate, bulk delete, filters kept in the URL (Ph 7) — test: `workflows-product.test.ts`; e2e: `web/e2e/product-workflows.spec.ts` (tag + search + duplicate); manual: list with tag chips and red status dot (screenshot)
+- [x] P2 Import / export workflow JSON: export file keeps only `{id, name}` credential references; import from a file or pasted JSON resolves references by id then name, reports missing ones, fresh webhook ids, tags by name (Ph 7) — test: `workflows-product.test.ts` (export → import round trip with a saved credential, secret never in the file); manual: real export of a workflow using a header-auth credential: secret absent, reference kept, re-import resolved it
+- [x] P2 Executions page: filters (workflow, status, mode, date range), "Load more" pagination, bulk delete; detail page with nodes in run order, INPUT / OUTPUT (Schema / Table / JSON), error card, delete, open workflow; the editor shows the last run again after a reload (or `?execution=<id>`) (Ph 7) — test: `executions-api.test.ts`; e2e: `web/e2e/product-executions.spec.ts`; manual: detail of a Set → Code run (screenshot)
+- [x] P2 Retry a failed execution: from the failed node (every node that succeeded is reused, all branches after the failure run) or from the start; linked with "Retry of #N" (Ph 7) — test: `executions-api.test.ts` (single chain, several branches and leaves, rerun all, 400 / 404); manual: Retry button on a failed run → Start and Prepare `reused`, failed node re-ran with success
+- [x] P2 Variables page (create / edit / delete, copy `{{ $vars.key }}`) feeding `$vars` in expressions, the expression preview, the Code node and the Code Tool (Ph 7) — test: `variables.test.ts` (expression + Code node, both modes); manual: variable added from the page; a Set `{{ $vars.city }}` and a Code node `$vars.city` both returned Paris
+- [x] P2 Settings page: time zone, default timeout, concurrency (applied at once), save data of successful / failed / manual runs, retention (days, max count, Prune now), `$env` access, Execute Command toggle; shows the value in effect (Settings first, then `.env`) (Ph 7) — test: `settings.test.ts`, `pruning.test.ts` (never deletes queued / running / waiting); e2e: Execute Command toggle; manual: page reviewed, Prune now clicked (toast)
+- [x] P2 Templates gallery: 7 examples + 7 new templates + the AI builder templates, search, category chips, graph preview, one-click import that opens the editor (Ph 7) — test: `templates.test.ts` (every template imports and uses only registered node types); manual: gallery reviewed, "Use template" opened the editor
+- [x] P2 Dashboard (Overview): executions per day for 14 days (stacked success / error / other), success rate, average duration, active workflows, top failing workflows, recent executions, integrations health (credentials saved / from `.env` / missing) (Ph 7) — test: `dashboard.test.ts` (zero days, rates, no secret); manual: dashboard with 1 success + 1 failure (screenshot)
 
 ## Wow
 - [ ] P1 Time-travel debugger (scrub steps, inspect data, re-run from a node) (Ph 8)

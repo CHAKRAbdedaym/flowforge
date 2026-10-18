@@ -4,6 +4,7 @@ import type { Item, RunData, TaskSource, WorkflowData } from '@flowforge/shared'
 import type { AppServices } from '../app.js';
 import { publicEnv } from '../engine/env.js';
 import { serializeError } from '../engine/errors.js';
+import { effectiveSettings } from '../settings/instance-settings.js';
 import { getExpressionEngine } from '../engine/expressions/engine.js';
 
 const PreviewSchema = z.object({
@@ -46,9 +47,9 @@ export function expressionsRouter(s: AppServices): Router {
           runIndex: body.runIndex,
           mode: 'manual',
           executionId: 'preview',
-          timezone: workflow.settings?.timezone || s.config.timezone,
-          variables: {},
-          env: s.config.allowEnvAccess ? publicEnv() : null,
+          timezone: workflow.settings?.timezone || effectiveSettings(s.settings.all(), s.config).timezone,
+          variables: s.variablesRepo.asRecord(),
+          env: effectiveSettings(s.settings.all(), s.config).allowEnvAccess ? publicEnv() : null,
         },
         body.itemIndex,
       );

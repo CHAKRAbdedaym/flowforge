@@ -19,7 +19,7 @@ function strip(node: WorkflowNode): WorkflowNode {
 /**
  * One-time upgrade (Phase 3 → 3B): Webhook nodes used to keep their Basic / Header Auth password in the
  * node parameters. Those values move to encrypted credentials referenced by the node, and are removed from
- * the stored workflows and from the workflow copies kept with old executions.
+ * the stored workflows, from the workflow copies kept with old executions and from version snapshots.
  */
 export function migrateLegacyWebhookAuth(db: DB, credentials: CredentialsService, logger: Logger): { workflows: number; executions: number } {
   if (db.prepare('SELECT 1 FROM settings WHERE key = ?').get(DONE_KEY)) return { workflows: 0, executions: 0 };
@@ -60,6 +60,15 @@ export function migrateLegacyWebhookAuth(db: DB, credentials: CredentialsService
     if (!workflow.nodes?.some(has)) continue;
     workflow.nodes = workflow.nodes.map((node) => (has(node) ? strip(node) : node));
     db.prepare('UPDATE execution_data SET workflow = ? WHERE execution_id = ?').run(JSON.stringify(workflow), snapshot.execution_id);
+    executions++;
+  }
+
+  // Version history (Phase 7) keeps snapshots too: strip them the same way.
+  const versions = db.prepare(`SELECT id, nodes FROM workflow_versions WHERE ${LIKE('nodes')}`).all(...MARKERS) as { id: number; nodes: string }[];
+  for (const version of versions) {
+    const nodes = JSON.parse(version.nodes) as WorkflowNode[];
+    if (!nodes.some(has)) continue;
+    db.prepare('UPDATE workflow_versions SET nodes = ? WHERE id = ?').run(JSON.stringify(nodes.map((node) => (has(node) ? strip(node) : node))), version.id);
     executions++;
   }
 

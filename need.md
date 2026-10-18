@@ -148,6 +148,38 @@ stops receiving. For the side-by-side comparison with n8n, create a second bot.
 
 ---
 
+## 2c. Variables, settings and data retention (no key needed)
+
+These are set in the app, not in `.env`. Nothing here is required: the defaults work.
+
+**Variables** (sidebar → **Variables**)
+- A variable is a name and a text value that every workflow can read, for example `city` = `Paris`.
+- Use it in any field in expression mode: `{{ $vars.city }}`, and in the Code node: `$vars.city`.
+- Change the value once and every workflow uses the new value at its next run.
+- Variables are **not secret** (like in n8n): never put a password or an API key in one. Keys belong on the
+  **Credentials** page.
+
+**Settings** (sidebar → **Settings**). Each field shows the value in effect; "default" means the `.env` value.
+| Setting | What it means in simple words | Default |
+|---|---|---|
+| Time zone | The clock used by `$now`, dates and Schedule triggers. Active workflows restart their schedules when you change it | `GENERIC_TIMEZONE` of `.env` |
+| Execution timeout | A run that takes longer is stopped. A workflow can set its own value (workflow settings) | 300 s |
+| Concurrency | How many runs can work at the same time; the others wait their turn | 5 |
+| Save data of successful / failed / manual runs | "Save" keeps the run in **Executions** so you can look inside it; "Don't save" deletes it right after it ends (manual runs: after 10 minutes, so the editor can still show the result) | Save |
+| Allow `$env` | Lets expressions read environment variables. Anything that looks like a password or key is always hidden | `.env` value |
+| Execute Command node | Lets workflows run shell commands on this computer. Keep it **off** unless you need it | Off |
+
+**Data retention** (Settings → Data retention)
+- FlowForge deletes old runs automatically so the database stays small: runs older than **N days** (default 14)
+  and anything beyond the newest **N runs** (default 10 000). `0` = never delete.
+- Runs that are still **running or waiting** (for example a Wait node or a form step) are **never** deleted.
+- **Prune now** applies the rules immediately. The check also runs at startup and every 10 minutes.
+
+- [ ] Before the demo: decide whether you want old test runs in **Executions** (they make the dashboard look
+      busy) or click **Prune now** with a small number of days
+
+---
+
 ## 3. Machine requirements
 
 - [ ] **Node.js 20.11 or newer** (22 LTS recommended). Check: `node -v`

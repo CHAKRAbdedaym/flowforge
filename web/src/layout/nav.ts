@@ -10,7 +10,7 @@ export interface NavItem {
 }
 
 export const MAIN_NAV: NavItem[] = [
-  { to: '/home', label: 'Overview', icon: LayoutDashboard, description: 'Status of your FlowForge instance.' },
+  { to: '/home', label: 'Overview', icon: LayoutDashboard, description: 'Dashboard: runs per day, success rate, failing workflows and instance status.' },
   {
     to: '/workflows',
     label: 'Workflows',
@@ -21,14 +21,12 @@ export const MAIN_NAV: NavItem[] = [
     to: '/templates',
     label: 'Templates',
     icon: LayoutTemplate,
-    phase: '7',
     description: 'Ready-made workflows you can import in one click.',
   },
   {
     to: '/executions',
     label: 'Executions',
     icon: History,
-    phase: '7',
     description: 'Every run of every workflow, with the input and output of each node.',
   },
   {
@@ -41,7 +39,6 @@ export const MAIN_NAV: NavItem[] = [
     to: '/variables',
     label: 'Variables',
     icon: Braces,
-    phase: '7',
     description: 'Global key/value pairs available in expressions as $vars.',
   },
 ];

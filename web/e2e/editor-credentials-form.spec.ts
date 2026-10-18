@@ -273,8 +273,8 @@ test('build Form → Send Email: missing credential error, create it from the no
   await expect.poll(() => mails.length, { timeout: 15_000 }).toBe(2);
   expect(mails[1]!.to).toEqual(['second@example.com']);
   expect(mails[1]!.mail.html).toContain('See you soon, Grace!');
-  const list = (await (await page.request.get(`/api/executions?workflowId=${workflowId}`)).json()) as { data?: unknown[] } | unknown[];
-  const executions = (Array.isArray(list) ? list : (list.data ?? [])) as { id: string; mode: string; status: string }[];
+  const list = (await (await page.request.get(`/api/executions?workflowId=${workflowId}`)).json()) as { items: unknown[] };
+  const executions = list.items as { id: string; mode: string; status: string }[];
   const production = executions.find((e) => e.mode === 'webhook')!;
   expect(production.status).toBe('success');
   const detail = (await (await page.request.get(`/api/executions/${production.id}`)).json()) as { runData: Record<string, { data: { main: { json: Record<string, unknown> }[][] } }[]> };

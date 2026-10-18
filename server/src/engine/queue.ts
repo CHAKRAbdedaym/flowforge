@@ -12,7 +12,12 @@ export class ExecutionQueue {
   private readonly normal: Job[] = [];
   private activeCount = 0;
 
-  constructor(private readonly concurrency: number) {}
+  constructor(private concurrency: number) {}
+
+  setConcurrency(n: number): void {
+    this.concurrency = Math.max(1, Math.floor(n));
+    this.next();
+  }
 
   get active(): number {
     return this.activeCount;

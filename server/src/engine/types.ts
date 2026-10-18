@@ -105,6 +105,10 @@ export interface ExecuteContext {
   getFilesRoot(): string;
   /** An instance setting switched on the Settings page (e.g. "executeCommandEnabled"). */
   getInstanceSetting(key: string): unknown;
+  /** Global variables of this run (`$vars`). */
+  getVariables(): Record<string, string>;
+  /** Visible environment variables (`$env`), or null when $env access is switched off. Secret-looking names are always hidden. */
+  getEnv(): Record<string, string> | null;
   /** Conversation history of a chat session of this workflow (Chat Trigger → AI nodes). */
   getChatMemory(sessionId: string): ChatMemory;
   /**

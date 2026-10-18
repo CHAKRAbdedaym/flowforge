@@ -15,6 +15,11 @@ import { executionsRouter } from './executions.js';
 import { expressionsRouter } from './expressions.js';
 import { nodeTypesRouter } from './node-types.js';
 import { workflowsRouter } from './workflows.js';
+import { tagsRouter } from './tags.js';
+import { versionsRouter } from './versions.js';
+import { variablesRouter } from './variables.js';
+import { templatesRouter } from './templates.js';
+import { dashboardRouter } from './dashboard.js';
 
 export function apiRouter(ctx: AppServices): Router {
   const router = Router();
@@ -56,7 +61,12 @@ export function apiRouter(ctx: AppServices): Router {
     res.json(body);
   });
 
+  router.use('/workflows/:id/versions', versionsRouter(ctx));
   router.use('/workflows', workflowsRouter(ctx));
+  router.use('/tags', tagsRouter(ctx));
+  router.use('/variables', variablesRouter(ctx));
+  router.use('/templates', templatesRouter(ctx));
+  router.use('/dashboard', dashboardRouter(ctx));
   router.use('/node-types', nodeTypesRouter(ctx));
   router.use('/expressions', expressionsRouter(ctx));
   router.use('/executions', executionsRouter(ctx));

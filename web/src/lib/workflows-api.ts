@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ExecutionDetail,
+  ImportWorkflowResponse,
+  Tag,
   RunWorkflowRequest,
   TestListenRequest,
   TestListenResponse,
@@ -51,7 +53,8 @@ export function useDeleteWorkflow() {
   });
 }
 
-export const saveWorkflow = (id: string, data: WorkflowData) => api<WorkflowRecord>(`/workflows/${id}`, { method: 'PUT', body: data });
+export const saveWorkflow = (id: string, data: WorkflowData, versionNote?: string) =>
+  api<WorkflowRecord>(`/workflows/${id}`, { method: 'PUT', body: versionNote ? { ...data, versionNote } : data });
 
 export const runWorkflow = (body: RunWorkflowRequest) => api<{ executionId: string }>('/executions/run', { method: 'POST', body });
 
@@ -73,4 +76,74 @@ export function useToggleActive() {
     mutationFn: ({ id, active }: { id: string; active: boolean }) => (active ? activateWorkflow(id) : deactivateWorkflow(id)),
     onSettled: () => void client.invalidateQueries({ queryKey: workflowsKey }),
   });
+}
+
+// ── Phase 7: tags, duplicate, import / export, bulk delete ──
+export const tagsKey = ['tags'] as const;
+
+export function useTags() {
+  return useQuery({ queryKey: tagsKey, queryFn: () => api<Tag[]>('/tags') });
+}
+
+export function useTagMutations() {
+  const client = useQueryClient();
+  const refresh = () => {
+    void client.invalidateQueries({ queryKey: tagsKey });
+    void client.invalidateQueries({ queryKey: workflowsKey });
+  };
+  return {
+    create: useMutation({ mutationFn: (name: string) => api<Tag>('/tags', { method: 'POST', body: { name } }), onSuccess: refresh }),
+    rename: useMutation({ mutationFn: ({ id, name }: { id: string; name: string }) => api<Tag>(`/tags/${id}`, { method: 'PATCH', body: { name } }), onSuccess: refresh }),
+    remove: useMutation({ mutationFn: (id: string) => api<void>(`/tags/${id}`, { method: 'DELETE' }), onSuccess: refresh }),
+    assign: useMutation({
+      mutationFn: ({ id, tagIds }: { id: string; tagIds: string[] }) => api<{ tags: Array<{ id: string; name: string }> }>(`/workflows/${id}/tags`, { method: 'PUT', body: { tagIds } }),
+      onSuccess: refresh,
+    }),
+  };
+}
+
+export function useDuplicateWorkflow() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<WorkflowRecord>(`/workflows/${id}/duplicate`, { method: 'POST', body: {} }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: workflowsKey }),
+  });
+}
+
+export function useImportWorkflow() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (workflow: unknown) => api<ImportWorkflowResponse>('/workflows/import', { method: 'POST', body: workflow }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: workflowsKey });
+      void client.invalidateQueries({ queryKey: tagsKey });
+    },
+  });
+}
+
+export function useBulkDelete() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => api<{ deleted: number }>('/workflows/delete', { method: 'POST', body: { ids } }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: workflowsKey });
+      void client.invalidateQueries({ queryKey: tagsKey });
+    },
+  });
+}
+
+/** Downloads the export file of a workflow (the server sets the file name). */
+export async function downloadWorkflowExport(id: string, fallbackName: string): Promise<void> {
+  const res = await fetch(`/api/workflows/${id}/export`, { credentials: 'same-origin' });
+  if (!res.ok) throw new Error(`Export failed (HTTP ${res.status})`);
+  const match = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = match?.[1] ?? `${fallbackName}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

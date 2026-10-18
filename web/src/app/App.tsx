@@ -5,13 +5,15 @@ import type { AuthStatus } from '@flowforge/shared';
 import { FullScreenLoader } from '../components/FullScreen';
 import { Toaster } from '../components/Toaster';
 import { AppLayout } from '../layout/AppLayout';
-import { MAIN_NAV } from '../layout/nav';
 import { ApiError } from '../lib/api';
 import { AUTH_STATUS_KEY } from '../lib/auth';
 import { CredentialsPage } from '../pages/CredentialsPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
-import { OverviewPage } from '../pages/OverviewPage';
-import { PlaceholderPage } from '../pages/PlaceholderPage';
+import { DashboardPage } from '../pages/DashboardPage';
+import { ExecutionDetailPage } from '../pages/ExecutionDetailPage';
+import { ExecutionsPage } from '../pages/ExecutionsPage';
+import { TemplatesPage } from '../pages/TemplatesPage';
+import { VariablesPage } from '../pages/VariablesPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { SetupPage } from '../pages/SetupPage';
 import { SignInPage } from '../pages/SignInPage';
@@ -33,8 +35,6 @@ const queryClient = new QueryClient({
 
 // The editor (canvas, CodeMirror, all node icons) is loaded only when a workflow is opened.
 const EditorPage = lazy(() => import('../editor/EditorPage').then((m) => ({ default: m.EditorPage })));
-
-const placeholderPages = MAIN_NAV.filter((item) => item.phase);
 
 // A data router is needed for useBlocker (unsaved-changes warning in the editor).
 const router = createBrowserRouter([
@@ -71,11 +71,14 @@ const router = createBrowserRouter([
     element: <RequireAuth>{(user) => <AppLayout user={user} />}</RequireAuth>,
     children: [
       { index: true, element: <Navigate to="/home" replace /> },
-      { path: 'home', element: <RequireAuth>{(user) => <OverviewPage user={user} />}</RequireAuth> },
+      { path: 'home', element: <DashboardPage /> },
       { path: 'workflows', element: <WorkflowsPage /> },
+      { path: 'templates', element: <TemplatesPage /> },
+      { path: 'executions', element: <ExecutionsPage /> },
+      { path: 'executions/:id', element: <ExecutionDetailPage /> },
       { path: 'credentials', element: <CredentialsPage /> },
+      { path: 'variables', element: <VariablesPage /> },
       { path: 'settings', element: <SettingsPage /> },
-      ...placeholderPages.map((item) => ({ path: item.to.slice(1), element: <PlaceholderPage item={item} /> })),
       { path: '*', element: <NotFoundPage /> },
     ],
   },

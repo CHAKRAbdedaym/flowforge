@@ -6,6 +6,7 @@ import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } fr
 import { EditorView, Decoration, keymap, lineNumbers, MatchDecorator, placeholder as cmPlaceholder, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { tags as t } from '@lezer/highlight';
+import { api } from '../../lib/api';
 import { EXPRESSION_HELPERS, EXPRESSION_VARIABLES } from '../../lib/expressions';
 
 export const editorTheme = EditorView.theme(
@@ -89,6 +90,23 @@ const method = (label: string, info: string): Completion => ({ label, type: 'met
 const NODE_METHODS = [method('item', 'paired item'), method('first()', 'first item'), method('last()', 'last item'), method('all()', 'all items'), method('isExecuted', 'boolean'), method('params', 'parameters')];
 const INPUT_METHODS = [method('item', 'current item'), method('first()', 'first item'), method('last()', 'last item'), method('all()', 'all items'), method('params', 'parameters')];
 
+/** Keys of the Variables page, fetched lazily and cached for 15 s (for $vars.<key>). */
+let variableKeys: string[] = [];
+let variablesFetchedAt = 0;
+export function setKnownVariableKeys(keys: string[]) {
+  variableKeys = keys;
+  variablesFetchedAt = Date.now();
+}
+function refreshVariableKeys() {
+  if (Date.now() - variablesFetchedAt < 15_000) return;
+  variablesFetchedAt = Date.now();
+  api<Array<{ key: string }>>('/variables')
+    .then((list) => {
+      variableKeys = list.map((v) => v.key);
+    })
+    .catch(() => undefined);
+}
+
 export function expressionCompletions(getData: () => CompletionData) {
   return (context: CompletionContext): CompletionResult | null => {
     const before = context.state.sliceDoc(0, context.pos);
@@ -99,6 +117,14 @@ export function expressionCompletions(getData: () => CompletionData) {
     const data = getData();
     let m: RegExpExecArray | null;
 
+    if (text.includes('$v')) refreshVariableKeys();
+    if ((m = /\$vars\.([\w$]*)$/.exec(text))) {
+      return {
+        from: context.pos - m[1]!.length,
+        options: variableKeys.map((key) => ({ label: key, type: 'variable', detail: 'variable' })),
+        validFor: /^[\w$]*$/,
+      };
+    }
     if ((m = /\$json((?:\.[\w$]+)*)\.([\w$]*)$/.exec(text))) {
       return { from: context.pos - m[2]!.length, options: fieldOptions(readPath(data.input, m[1]!.slice(1))), validFor: /^[\w$]*$/ };
     }

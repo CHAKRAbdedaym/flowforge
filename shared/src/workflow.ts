@@ -106,6 +106,11 @@ export interface WorkflowSummary extends ActivationInfo {
   nodeCount: number;
   createdAt: string;
   updatedAt: string;
+  /** Phase 7 (filled by GET /api/workflows). */
+  tags?: Array<{ id: string; name: string }>;
+  /** Status and start time of the latest execution (status dot in the list). */
+  lastExecutionStatus?: ExecutionStatus | null;
+  lastExecutionAt?: string | null;
 }
 
 /** Body of POST /api/workflows/:id/test-listen ("Listen for test event"). */

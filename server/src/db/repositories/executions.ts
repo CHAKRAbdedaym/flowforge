@@ -1,5 +1,8 @@
 import type {
   ExecutionDetail,
+  ExecutionListItem,
+  ExecutionListQuery,
+  ExecutionPage,
   ExecutionEvent,
   ExecutionMode,
   ExecutionStatus,
@@ -24,6 +27,8 @@ interface Row {
   wait_till: string | null;
   waiting_node: string | null;
   depth: number;
+  created_at: string;
+  retry_of: number | null;
 }
 
 /** How an execution was started — needed to resume it after a Wait. */
@@ -50,15 +55,29 @@ function summary(row: Row): ExecutionSummary {
   };
 }
 
+function listItem(row: Row): ExecutionListItem {
+  const start = row.started_at ? Date.parse(row.started_at) : NaN;
+  const stop = row.stopped_at ? Date.parse(row.stopped_at) : NaN;
+  return {
+    ...summary(row),
+    createdAt: row.created_at,
+    retryOf: row.retry_of === null ? null : String(row.retry_of),
+    durationMs: Number.isFinite(start) && Number.isFinite(stop) ? Math.max(0, stop - start) : null,
+  };
+}
+
+export const ACTIVE_STATUSES: ExecutionStatus[] = ['queued', 'running', 'waiting'];
+export const FINISHED_STATUSES: ExecutionStatus[] = ['success', 'error', 'canceled', 'crashed'];
+
 export class ExecutionsRepo {
   constructor(private readonly db: DB) {}
 
-  create(input: { workflow: WorkflowData; mode: ExecutionMode; parentExecutionId?: string; options?: RunOptions }): string {
+  create(input: { workflow: WorkflowData; mode: ExecutionMode; parentExecutionId?: string; retryOf?: string; options?: RunOptions }): string {
     return this.db.transaction(() => {
       const result = this.db
         .prepare(
-          `INSERT INTO executions (workflow_id, workflow_name, mode, status, created_at, parent_execution_id, depth)
-           VALUES (?, ?, ?, 'queued', ?, ?, ?)`,
+          `INSERT INTO executions (workflow_id, workflow_name, mode, status, created_at, parent_execution_id, depth, retry_of)
+           VALUES (?, ?, ?, 'queued', ?, ?, ?, ?)`,
         )
         .run(
           input.workflow.id ?? null,
@@ -67,6 +86,7 @@ export class ExecutionsRepo {
           new Date().toISOString(),
           input.parentExecutionId ? Number(input.parentExecutionId) : null,
           input.options?.depth ?? 0,
+          input.retryOf ? Number(input.retryOf) : null,
         );
       const id = Number(result.lastInsertRowid);
       this.db
@@ -162,7 +182,7 @@ export class ExecutionsRepo {
     })();
   }
 
-  get(id: string): ExecutionDetail | undefined {
+  get(id: string): (ExecutionDetail & { retryOf: string | null }) | undefined {
     const row = this.db.prepare('SELECT * FROM executions WHERE id = ?').get(Number(id)) as Row | undefined;
     if (!row) return undefined;
     const data = this.db.prepare('SELECT * FROM execution_data WHERE execution_id = ?').get(row.id) as
@@ -170,6 +190,7 @@ export class ExecutionsRepo {
       | undefined;
     return {
       ...summary(row),
+      retryOf: row.retry_of === null ? null : String(row.retry_of),
       workflow: data ? (JSON.parse(data.workflow) as WorkflowData) : { name: row.workflow_name, nodes: [], connections: {} },
       runData: data ? (JSON.parse(data.run_data) as RunData) : {},
       error: data?.error ? (JSON.parse(data.error) as SerializedError) : null,
@@ -185,6 +206,73 @@ export class ExecutionsRepo {
         : this.db.prepare('SELECT * FROM executions ORDER BY id DESC LIMIT ?').all(limit)
     ) as Row[];
     return rows.map(summary);
+  }
+
+  /** Filtered, cursor-paginated list (newest first) with the total number of matches. */
+  listPage(query: Omit<ExecutionListQuery, 'status' | 'mode'> & { status?: ExecutionStatus[]; mode?: ExecutionMode[] }): ExecutionPage {
+    const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+    const where: string[] = [];
+    const params: Array<string | number> = [];
+    if (query.workflowId) {
+      where.push('workflow_id = ?');
+      params.push(query.workflowId);
+    }
+    if (query.status?.length) {
+      where.push(`status IN (${query.status.map(() => '?').join(',')})`);
+      params.push(...query.status);
+    }
+    if (query.mode?.length) {
+      where.push(`mode IN (${query.mode.map(() => '?').join(',')})`);
+      params.push(...query.mode);
+    }
+    if (query.from) {
+      where.push('created_at >= ?');
+      params.push(query.from);
+    }
+    if (query.to) {
+      where.push('created_at <= ?');
+      params.push(query.to);
+    }
+    const base = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM executions ${base}`).get(...params) as { n: number }).n;
+    const paged = query.cursor ? [...where, 'id < ?'] : where;
+    const pagedParams = query.cursor ? [...params, Number(query.cursor)] : params;
+    const rows = this.db
+      .prepare(`SELECT * FROM executions ${paged.length ? `WHERE ${paged.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`)
+      .all(...pagedParams, limit + 1) as Row[];
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit).map(listItem);
+    return { items, nextCursor: hasMore ? items[items.length - 1]!.id : null, total };
+  }
+
+  /** Statuses of the given ids (missing ids are left out). */
+  statusOf(ids: string[]): Map<string, ExecutionStatus> {
+    const out = new Map<string, ExecutionStatus>();
+    for (const id of ids) {
+      const row = this.db.prepare('SELECT status FROM executions WHERE id = ?').get(Number(id)) as { status: ExecutionStatus } | undefined;
+      if (row) out.set(id, row.status);
+    }
+    return out;
+  }
+
+  /** Ids of finished executions that the retention rules say should go. Never queued / running / waiting. */
+  findPrunable(input: { olderThan?: string | null; keepNewest?: number | null; manualOlderThan?: string | null }): string[] {
+    const finished = FINISHED_STATUSES.map((s) => `'${s}'`).join(',');
+    const ids = new Set<number>();
+    if (input.olderThan) {
+      for (const r of this.db.prepare(`SELECT id FROM executions WHERE status IN (${finished}) AND created_at < ?`).all(input.olderThan) as Array<{ id: number }>) ids.add(r.id);
+    }
+    if (input.keepNewest && input.keepNewest > 0) {
+      for (const r of this.db
+        .prepare(`SELECT id FROM executions WHERE status IN (${finished}) ORDER BY id DESC LIMIT -1 OFFSET ?`)
+        .all(input.keepNewest) as Array<{ id: number }>) ids.add(r.id);
+    }
+    if (input.manualOlderThan) {
+      for (const r of this.db
+        .prepare(`SELECT id FROM executions WHERE status IN (${finished}) AND mode = 'manual' AND created_at < ?`)
+        .all(input.manualOlderThan) as Array<{ id: number }>) ids.add(r.id);
+    }
+    return [...ids].map(String);
   }
 
   /** On startup: executions that were queued or running when the server stopped can never finish. */

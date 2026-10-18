@@ -139,6 +139,61 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_chat_memory_session ON chat_memory(session_key, id);
     `,
   },
+  {
+    id: 7,
+    name: 'tags',
+    sql: `
+      CREATE TABLE tags (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE workflow_tags (
+        workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+        tag_id      TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        PRIMARY KEY (workflow_id, tag_id)
+      );
+      CREATE INDEX idx_workflow_tags_tag ON workflow_tags(tag_id);
+    `,
+  },
+  {
+    id: 8,
+    name: 'workflow_versions',
+    sql: `
+      CREATE TABLE workflow_versions (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+        version_id  TEXT NOT NULL,
+        number      INTEGER NOT NULL,
+        name        TEXT NOT NULL,
+        nodes       TEXT NOT NULL,
+        connections TEXT NOT NULL,
+        settings    TEXT NOT NULL DEFAULT '{}',
+        hash        TEXT NOT NULL,
+        source      TEXT NOT NULL DEFAULT 'save',
+        note        TEXT,
+        restored_from INTEGER,
+        created_at  TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_workflow_versions_number ON workflow_versions(workflow_id, number);
+    `,
+  },
+  {
+    id: 9,
+    name: 'variables_and_execution_indexes',
+    sql: `
+      CREATE TABLE variables (
+        id         TEXT PRIMARY KEY,
+        key        TEXT NOT NULL UNIQUE,
+        value      TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_executions_created ON executions(created_at);
+      CREATE INDEX idx_executions_status_id ON executions(status, id DESC);
+    `,
+  },
 ];
 
 export function runMigrations(db: DB, migrations: Migration[] = MIGRATIONS): number {

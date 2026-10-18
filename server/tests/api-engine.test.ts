@@ -118,7 +118,7 @@ describe('executions API and persistence', () => {
   it('stores executions with run data and lists them newest first', async () => {
     const first = await runFixture('01-hello-world');
     const second = await runFixture('08-stop-and-error');
-    const list = (await agent.get('/api/executions')).body;
+    const list = (await agent.get('/api/executions')).body.items;
     expect(list.map((e: { id: string }) => e.id)).toEqual([second.executionId, first.executionId]);
     expect(list[0]).toMatchObject({ status: 'error', workflowName: '08 Stop and Error', errorMessage: 'Keyboard is out of stock', mode: 'manual' });
     const detail = (await agent.get(`/api/executions/${first.executionId}`)).body;

@@ -165,8 +165,8 @@ async function runCode(ctx: ExecuteContext): Promise<Item[]> {
     params: ctx.node.parameters,
     workflow: { id: ctx.workflow.id ?? null, name: ctx.workflow.name, active: Boolean(ctx.workflow.active) },
     execution: { id: ctx.executionId, mode: ctx.mode === 'manual' ? 'test' : 'production' },
-    vars: {},
-    env: null,
+    vars: ctx.getVariables(),
+    env: ctx.getEnv(),
   };
   const { source, lineOffset } = buildSource(code, mode, data);
 

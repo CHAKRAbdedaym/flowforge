@@ -43,6 +43,21 @@ export interface StartOptions {
   depth?: number;
   /** Sub-workflows run right away: their parent already holds a queue slot. */
   bypassQueue?: boolean;
+  /** Id of the execution this one retries (mode "retry"). */
+  retryOf?: string;
+  /** Retry: reuse `previousRunData` for the nodes that have it (see RunRequest.reuseRunData). */
+  reuseRunData?: boolean;
+}
+
+/** Values read at the start of every execution (Settings page first, then .env). Phase 7, W4. */
+export interface RuntimeSettings {
+  timezone: string;
+  timeoutMs: number;
+  allowEnvAccess: boolean;
+  variables: Record<string, string>;
+  /** Instance defaults when the workflow has no own "save execution data" setting. */
+  saveDataSuccess: 'all' | 'none';
+  saveDataError: 'all' | 'none';
 }
 
 export interface StartedExecution {
@@ -67,6 +82,8 @@ export interface ExecutionServiceOptions {
   timezone: string;
   allowEnvAccess: boolean;
   publicUrl?: string;
+  /** Live settings; when missing the static values above are used. */
+  runtime?: () => RuntimeSettings;
 }
 
 const PREVIEW_ITEMS = 3;
@@ -114,6 +131,25 @@ export class ExecutionService {
     return this.queue.active;
   }
 
+  /** Settings page: change how many executions run at the same time (applies to the next ones). */
+  setMaxConcurrent(n: number): void {
+    this.queue.setConcurrency(n);
+  }
+
+  /** Live settings (Settings page, variables) or the static options when no provider is given. */
+  private runtime(): RuntimeSettings {
+    return (
+      this.o.runtime?.() ?? {
+        timezone: this.o.timezone,
+        timeoutMs: this.o.timeoutMs,
+        allowEnvAccess: this.o.allowEnvAccess,
+        variables: {},
+        saveDataSuccess: 'all',
+        saveDataError: 'all',
+      }
+    );
+  }
+
   resumeUrls(executionId: string) {
     const base = this.o.publicUrl ?? '';
     return { webhook: `${base}/webhook-waiting/${executionId}`, form: `${base}/form-waiting/${executionId}` };
@@ -125,6 +161,7 @@ export class ExecutionService {
       workflow: options.workflow,
       mode: options.mode,
       parentExecutionId: options.parentExecutionId,
+      retryOf: options.retryOf,
       options: { startNode: options.startNode, destinationNode: options.destinationNode, depth: options.depth ?? 0 },
     });
     const workflowId = options.workflow.id ?? null;
@@ -302,6 +339,7 @@ export class ExecutionService {
     this.emit(executionId, workflowId, 'execution.started', { ...ref, mode: options.mode, startedAt: startedAt.toISOString() }, ++seq);
 
     const settingsTimeout = options.workflow.settings?.executionTimeout;
+    const rt = this.runtime();
     let result: RunResult | undefined;
     try {
       result = await runner.run({
@@ -312,12 +350,13 @@ export class ExecutionService {
         triggerItems: options.triggerItems,
         destinationNode: options.destinationNode,
         previousRunData: options.previousRunData,
+        reuseRunData: options.reuseRunData,
         resume: run.resume ? { state: run.resume.state, output: run.resume.output } : undefined,
         signal: controller.signal,
-        timeoutMs: settingsTimeout && settingsTimeout > 0 ? settingsTimeout * 1000 : this.o.timeoutMs,
-        timezone: options.workflow.settings?.timezone || this.o.timezone,
-        variables: {},
-        env: this.o.allowEnvAccess ? publicEnv() : null,
+        timeoutMs: settingsTimeout && settingsTimeout > 0 ? settingsTimeout * 1000 : rt.timeoutMs,
+        timezone: options.workflow.settings?.timezone || rt.timezone,
+        variables: rt.variables,
+        env: rt.allowEnvAccess ? publicEnv() : null,
         services: this.services(executionId, options),
         hooks: {
           nodeStarted: (nodeName, runIndex) => {
@@ -454,9 +493,12 @@ export class ExecutionService {
   private applySaveSettings(detail: ExecutionDetail, options: StartOptions) {
     if (options.mode === 'manual' || options.mode === 'subworkflow') return;
     const settings = options.workflow.settings ?? {};
+    const rt = this.runtime();
+    // The workflow's own setting wins; "default" / missing = the instance default.
+    const policy = (own: string | undefined, instance: 'all' | 'none') => (own === 'all' || own === 'none' ? own : instance);
     const drop =
-      (detail.status === 'success' && settings.saveDataSuccessExecution === 'none') ||
-      (detail.status === 'error' && settings.saveDataErrorExecution === 'none');
+      (detail.status === 'success' && policy(settings.saveDataSuccessExecution, rt.saveDataSuccess) === 'none') ||
+      (detail.status === 'error' && policy(settings.saveDataErrorExecution, rt.saveDataError) === 'none');
     if (!drop) return;
     this.o.repo.delete(detail.id);
     void this.o.binaryStore?.deleteExecution(detail.id);

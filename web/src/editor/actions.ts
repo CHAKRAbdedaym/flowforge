@@ -1,6 +1,6 @@
-import { errorMessage } from '../lib/api';
+import { api, errorMessage } from '../lib/api';
 import { toast } from '../lib/toast';
-import type { NodeTypeInfo } from '@flowforge/shared';
+import type { NodeTypeInfo, WorkflowRecord } from '@flowforge/shared';
 import { aiOutput, isTriggerType } from '../lib/node-types';
 import { listAllEdges } from './graph';
 import {
@@ -169,11 +169,11 @@ export async function stopCurrent() {
   if (id) await stopExecution(id).catch((err) => toast.error('Could not stop', errorMessage(err)));
 }
 
-export async function save(): Promise<boolean> {
+export async function save(versionNote?: string): Promise<boolean> {
   const s = useEditor.getState();
   if (!s.workflowId) return false;
   try {
-    const record = await saveWorkflow(s.workflowId, workflowData());
+    const record = await saveWorkflow(s.workflowId, workflowData(), versionNote);
     // Keep edits made while the request was in flight marked as unsaved.
     if (useEditor.getState().nodes === s.nodes && useEditor.getState().name === s.name) editor.markSaved(record);
     else useEditor.setState({ versionId: record.versionId });
@@ -186,6 +186,21 @@ export async function save(): Promise<boolean> {
     return true;
   } catch (err) {
     toast.error('Could not save', errorMessage(err));
+    return false;
+  }
+}
+
+/** Restores a saved version (server side), then reloads the workflow into the editor. */
+export async function restoreVersion(number: number, note?: string): Promise<boolean> {
+  const id = useEditor.getState().workflowId;
+  if (!id) return false;
+  try {
+    const record = await api<WorkflowRecord>(`/workflows/${id}/versions/${number}/restore`, { method: 'POST', body: note ? { note } : {} });
+    editor.load(record);
+    toast.success(`Restored version ${number}`);
+    return true;
+  } catch (err) {
+    toast.error('Could not restore this version', errorMessage(err));
     return false;
   }
 }

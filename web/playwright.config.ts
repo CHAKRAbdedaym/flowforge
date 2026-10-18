@@ -24,7 +24,7 @@ export default defineConfig({
   projects: [
     { name: 'phase0', testMatch: /phase0-.*\.spec\.ts/, use: browser },
     { name: 'auth', testMatch: /auth\.setup\.ts/, dependencies: ['phase0'], use: browser },
-    { name: 'editor', testMatch: /editor-.*\.spec\.ts/, dependencies: ['auth'], use: { ...browser, storageState: STORAGE_STATE } },
+    { name: 'editor', testMatch: /(editor|product)-.*\.spec\.ts/, dependencies: ['auth'], use: { ...browser, storageState: STORAGE_STATE } },
   ],
   webServer: {
     command: 'node ../scripts/e2e-server.mjs',

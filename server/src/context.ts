@@ -11,6 +11,9 @@ import { ExecutionsRepo } from './db/repositories/executions.js';
 import { SessionsRepo } from './db/repositories/sessions.js';
 import { UsersRepo } from './db/repositories/users.js';
 import { WorkflowsRepo } from './db/repositories/workflows.js';
+import { TagsRepo } from './db/repositories/tags.js';
+import { VersionsRepo } from './db/repositories/versions.js';
+import { VariablesRepo } from './db/repositories/variables.js';
 import { BinaryStore } from './engine/binary-store.js';
 import type { Logger } from './logger.js';
 import type { NodeRegistry } from './nodes/registry.js';
@@ -31,6 +34,9 @@ export interface AppContext {
   credentials: CredentialsService;
   settings: InstanceSettingsService;
   chatMemory: ChatMemoryRepo;
+  tagsRepo: TagsRepo;
+  versionsRepo: VersionsRepo;
+  variablesRepo: VariablesRepo;
 }
 
 export function createContext(config: AppConfig, db: DB, logger: Logger, registry: NodeRegistry, options: { env?: NodeJS.ProcessEnv } = {}): AppContext {
@@ -54,5 +60,8 @@ export function createContext(config: AppConfig, db: DB, logger: Logger, registr
     }),
     settings: new InstanceSettingsService(new SettingsRepo(db)),
     chatMemory: new ChatMemoryRepo(db),
+    tagsRepo: new TagsRepo(db),
+    versionsRepo: new VersionsRepo(db),
+    variablesRepo: new VariablesRepo(db),
   };
 }

@@ -47,6 +47,11 @@ export interface RunRequest {
   destinationNode?: string;
   /** Partial run: data from the previous run, reused for nodes whose inputs did not change. */
   previousRunData?: RunData;
+  /**
+   * Retry: run the whole workflow, but every node that has data in `previousRunData` (and nothing fresh upstream)
+   * reuses it instead of executing again. The first node without data runs, and everything after it runs fresh.
+   */
+  reuseRunData?: boolean;
   /** Continue a paused execution: its saved state and the output of the node that waited. */
   resume?: { state: EngineState; output: Item[] };
   signal?: AbortSignal;
@@ -380,7 +385,8 @@ export class WorkflowRunner {
     if (start.disabled) {
       throw new WorkflowOperationError(`The start node "${start.name}" is disabled`, { hint: 'Enable it to run the workflow.' });
     }
-    return { tasks: [{ node: start.name, inputs: [], sources: [], triggerItems: req.triggerItems, fresh: true }], allowed: null };
+    const fresh = !req.reuseRunData || Boolean(req.triggerItems);
+    return { tasks: [{ node: start.name, inputs: [], sources: [], triggerItems: req.triggerItems, fresh }], allowed: null };
   }
 
   private compare(graph: WorkflowGraph, a: string, b: string): number {
@@ -423,7 +429,7 @@ export class WorkflowRunner {
       } else if (pinned) {
         outputs = [normalizeItems(pinned.map((i) => ('json' in (i as object) ? i : { json: i as unknown as Item['json'] })), node.name)];
         status = 'pinned';
-      } else if (req.destinationNode && node.name !== req.destinationNode && !task.fresh && previous?.length) {
+      } else if (((req.destinationNode && node.name !== req.destinationNode) || req.reuseRunData) && !task.fresh && previous?.length) {
         outputs = previous[previous.length - 1]!.data.main.map((list) => [...list]);
         status = 'reused';
       } else {

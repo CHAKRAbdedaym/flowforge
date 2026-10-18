@@ -58,8 +58,7 @@ test('owner setup signs in and shows the app shell with a live connection', asyn
     await page.locator('aside').getByRole('link', { name: label, exact: true }).click();
     await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
   }
-  // Pages of later phases say when they arrive; finished pages are real.
-  await expect(page.getByText('Phase 7')).toBeVisible(); // we are on Settings now
+  // Every page is real now (no "Phase N" placeholders left).
   await page.locator('aside').getByRole('link', { name: 'Credentials', exact: true }).click();
   await expect(page.getByTestId('create-credential')).toBeVisible();
   await expect(page.getByText(/Phase \d/)).toHaveCount(0);
