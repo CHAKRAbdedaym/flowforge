@@ -135,6 +135,11 @@ export default defineNode({
       ],
     },
   ],
+  /** Demo Mode: a plausible answer (no key, nothing is sent to Gemini). */
+  simulate() {
+    return { text: 'This is a simulated Gemini answer: add a Google Gemini API key to get real ones.', model: 'simulated' };
+  },
+
   async execute(ctx) {
     const credential = await ctx.getCredentials(CREDENTIAL);
     const apiKey = String(credential.data.apiKey ?? '').trim();

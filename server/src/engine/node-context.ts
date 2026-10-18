@@ -1,7 +1,7 @@
 import type { BinaryRef, ExecutionMode, Item, JsonObject, RunData, TaskSource, WorkflowData, WorkflowNode } from '@flowforge/shared';
 import type { Logger } from '../logger.js';
 import type { BinaryStore } from './binary-store.js';
-import { CredentialError, NodeOperationError, WaitSignal, toFlowError } from './errors.js';
+import { CredentialError, MissingCredentialError, NodeOperationError, WaitSignal, toFlowError } from './errors.js';
 import type { ExpressionEngine, ExpressionScope } from './expressions/engine.js';
 import { getDefault, getPath, isNoExpression } from './params.js';
 import { resolvePairedItem } from './paired-items.js';
@@ -31,6 +31,8 @@ export interface ExecutionServices {
 }
 
 export interface NodeContextOptions {
+  /** Demo Mode run: MissingCredentialError must reach the runner (it simulates the node) instead of being swallowed by "On Error". */
+  demo?: boolean;
   node: WorkflowNode;
   type: NodeType;
   workflow: WorkflowData;
@@ -159,6 +161,7 @@ export class NodeExecutionContext implements ExecuteContext {
           out.push(item.pairedItem === undefined && item !== items[i] ? { ...item, pairedItem: { item: i } } : item);
         }
       } catch (err) {
+        if (this.o.demo && err instanceof MissingCredentialError) throw err;
         const error = toFlowError(err, this.node.name);
         error.itemIndex ??= i;
         if (this.node.onError === 'continueRegularOutput') {

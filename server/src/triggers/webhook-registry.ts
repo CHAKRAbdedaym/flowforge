@@ -16,6 +16,8 @@ export interface WebhookRegistration {
   path: string;
   /** Test listeners are single-shot: called after the first request. */
   onUse?: () => void;
+  /** Demo Mode: set only by TestListeners.listen(..., { demo: true }) (test registrations only). */
+  demo?: boolean;
 }
 
 export class WebhookPathError extends Error {}

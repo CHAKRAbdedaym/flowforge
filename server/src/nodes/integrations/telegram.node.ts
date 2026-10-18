@@ -220,6 +220,11 @@ export default defineNode({
       ],
     },
   ],
+  /** Demo Mode: what Telegram would answer (nothing is sent). */
+  simulate(ctx, _item, i) {
+    return { message_id: 0, chat: { id: String(ctx.getNodeParameter('chatId', i, '') ?? '') || 'simulated' }, text: String(ctx.getNodeParameter('text', i, '') ?? '') };
+  },
+
   async execute(ctx) {
     const credential = await ctx.getCredentials('telegramApi');
     const { chatId: defaultChatId, ...auth } = telegramAuthFrom(credential.data);

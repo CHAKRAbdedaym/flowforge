@@ -5,7 +5,7 @@ import type { WorkflowNode } from '@flowforge/shared';
 import type { AppServices } from '../app.js';
 import { notFound } from '../http/errors.js';
 import { ROOT_DIR } from '../paths.js';
-import { importWorkflowFile } from '../templates/index.js';
+import { importWorkflowBundle } from '../templates/index.js';
 
 export const EXAMPLES_DIR = join(ROOT_DIR, 'examples');
 
@@ -19,6 +19,7 @@ export interface ExampleInfo {
 interface ExampleFile {
   name?: string;
   nodes?: WorkflowNode[];
+  workflows?: Array<{ nodes?: WorkflowNode[] }>;
   meta?: { description?: string };
 }
 
@@ -43,7 +44,7 @@ export function examplesRouter(s: AppServices, dir = EXAMPLES_DIR): Router {
             try {
               const wf = readExample(dir, id);
               if (!wf) return [];
-              return [{ id, name: wf.name ?? id, description: wf.meta?.description ?? '', nodeCount: (wf.nodes ?? []).filter((n) => n.type !== 'flowforge.stickyNote').length }];
+              return [{ id, name: wf.name ?? id, description: wf.meta?.description ?? '', nodeCount: (wf.workflows ? wf.workflows.flatMap((w) => w.nodes ?? []) : wf.nodes ?? []).filter((n) => n.type !== 'flowforge.stickyNote').length }];
             } catch {
               return [];
             }
@@ -55,8 +56,9 @@ export function examplesRouter(s: AppServices, dir = EXAMPLES_DIR): Router {
   router.post('/:id/import', (req, res) => {
     const example = readExample(dir, req.params.id);
     if (!example) throw notFound('Example not found');
-    const wf = importWorkflowFile(s, example);
-    res.status(201).json(wf);
+    const [main, ...related] = importWorkflowBundle(s, example);
+    // The main workflow, plus the other workflows of a multi-workflow example (error handler, sub-workflow…).
+    res.status(201).json(related.length ? { ...main, related: related.map((r) => ({ id: r.id, name: r.name })) } : main);
   });
 
   return router;

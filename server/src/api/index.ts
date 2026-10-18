@@ -20,6 +20,7 @@ import { versionsRouter } from './versions.js';
 import { variablesRouter } from './variables.js';
 import { templatesRouter } from './templates.js';
 import { dashboardRouter } from './dashboard.js';
+import { demoRouter } from './demo.js';
 
 export function apiRouter(ctx: AppServices): Router {
   const router = Router();
@@ -77,6 +78,7 @@ export function apiRouter(ctx: AppServices): Router {
   router.use('/examples', examplesRouter(ctx));
   router.use('/settings', settingsRouter(ctx));
   router.use('/ai', aiRouter(ctx));
+  router.use('/demo', demoRouter(ctx));
   if (ctx.config.devApi) router.use('/dev', devRouter(ctx));
 
   router.use((req, _res, next) => next(notFound(`API route not found: ${req.method} ${req.originalUrl}`)));

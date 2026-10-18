@@ -262,8 +262,13 @@ export function WorkflowsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
   const [params, setParams] = useSearchParams();
-  const filters = useMemo(() => readFilters(params), [params]);
-  const setFilters = (patch: Partial<typeof filters>) => setParams((prev) => writeFilters({ ...readFilters(prev), ...patch }), { replace: true });
+  // Local state is the source of truth (always current); the URL mirrors it. React Router's functional
+  // setSearchParams reads the params of the last render, so two quick changes would lose the first one.
+  const [filters, setFilterState] = useState(() => readFilters(params));
+  useEffect(() => {
+    setParams(writeFilters(filters), { replace: true });
+  }, [filters, setParams]);
+  const setFilters = (patch: Partial<typeof filters>) => setFilterState((f) => ({ ...f, ...patch }));
   const visible = useMemo(() => (workflows.data ? filterWorkflows(workflows.data, filters) : []), [workflows.data, filters]);
   const filtering = filters.q !== '' || filters.tags.length > 0 || filters.active !== 'all';
   // Selection only keeps workflows that still exist.

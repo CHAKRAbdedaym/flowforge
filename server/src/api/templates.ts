@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { TemplateDetail, TemplateInfo } from '@flowforge/shared';
 import type { AppServices } from '../app.js';
 import { notFound } from '../http/errors.js';
-import { importWorkflowFile, loadAllTemplates, matchesQuery } from '../templates/index.js';
+import { importTemplate, loadAllTemplates, matchesQuery } from '../templates/index.js';
 
 const info = ({ nodes: _n, connections: _c, ...rest }: TemplateDetail): TemplateInfo => rest;
 
@@ -31,7 +31,7 @@ export function templatesRouter(s: AppServices): Router {
   router.post('/:id/import', (req, res) => {
     const t = all().find((x) => x.id === req.params.id);
     if (!t) throw notFound('Template not found');
-    res.status(201).json(importWorkflowFile(s, { name: t.name, nodes: t.nodes, connections: t.connections }));
+    res.status(201).json(importTemplate(s, t));
   });
 
   return router;

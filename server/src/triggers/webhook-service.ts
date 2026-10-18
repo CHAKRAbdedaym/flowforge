@@ -222,6 +222,7 @@ export class WebhookService {
         startNode: reg.nodeName,
         triggerItems: result.items,
         responder,
+        ...(kind === 'test' && reg.demo ? { demo: true } : {}),
       }),
     (executionId) => kind === 'test' && this.o.onTestReceived?.(reg, executionId));
   }

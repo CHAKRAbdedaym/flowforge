@@ -307,6 +307,11 @@ export interface NodeType {
   outputs?: (parameters: JsonObject) => ConnectionSpec[];
   execute?(ctx: ExecuteContext): Promise<Item[][]> | Item[][];
   /**
+   * Demo Mode only: realistic made-up fields for one input item, used when `execute` throws MissingCredentialError.
+   * The runner adds `_simulated: true`. Must never read secrets.
+   */
+  simulate?(ctx: ExecuteContext, item: Item, itemIndex: number): JsonObject;
+  /**
    * Sub-nodes (output type ai_languageModel / ai_memory / ai_tool): return what the parent node gets.
    * `ctx` resolves parameters against the PARENT's input item `itemIndex` (so `{{ $json.sessionId }}` works).
    */

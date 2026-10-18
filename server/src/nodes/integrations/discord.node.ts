@@ -167,6 +167,11 @@ export default defineNode({
       ],
     },
   ],
+  /** Demo Mode: what Discord would answer (nothing is posted). */
+  simulate(ctx, _item, i) {
+    return { id: 'simulated', content: String(ctx.getNodeParameter('content', i, '') ?? ''), channel_id: 'simulated' };
+  },
+
   async execute(ctx) {
     const credential = await ctx.getCredentials('discordWebhookApi');
     const rejected = (err: unknown, itemIndex: number) =>

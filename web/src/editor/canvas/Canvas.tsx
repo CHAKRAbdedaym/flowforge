@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import {
   Background,
@@ -317,6 +318,20 @@ export function Canvas({ types }: { types: Map<string, NodeTypeInfo> }) {
                 <MousePointerClick size={13} /> or press Tab
               </span>
             </button>
+            <div className="pointer-events-auto absolute bottom-24 left-1/2 w-[440px] max-w-[90%] -translate-x-1/2 rounded-xl border border-line bg-panel/90 px-4 py-3 text-[12.5px] text-muted shadow-lg" data-testid="canvas-onboarding">
+              <div className="mb-1.5 font-medium text-fg">New here? Three ways to start</div>
+              <ol className="list-decimal space-y-0.5 pl-5">
+                <li>Click <b className="text-fg">Add first step</b> and pick a trigger (Manual, Form, Webhook, Schedule…).</li>
+                <li>Describe your automation in one sentence in the AI bar at the top (or pick a suggestion).</li>
+                <li>
+                  Start from a{' '}
+                  <Link to="/templates" className="text-accent-hover hover:underline">
+                    ready-made template
+                  </Link>
+                  . Press <kbd className="rounded border border-line bg-panel-2 px-1 font-mono text-[11px]">?</kbd> for keyboard shortcuts.
+                </li>
+              </ol>
+            </div>
           </div>
         )}
       </div>

@@ -3,7 +3,7 @@
 Tick each box when it is done. Nothing here costs money.
 **Never write a real key in this file or in git.** Keys go in `.env` (ignored by git) or on the Credentials page.
 
-Status of this file: written at the end of Phase 5, AI section added in Phase 6. It lists only what the app really uses today.
+Status of this file: final version (Phase 8). It lists only what the app really uses.
 Items marked **(not verified)** could not be tested by the developer without real keys: you test them with
 `npm run check`.
 
@@ -27,6 +27,8 @@ Items marked **(not verified)** could not be tested by the developer without rea
 
 "Optional" means FlowForge starts and every other node works without it. A node that needs a missing key
 shows a clear error with an **Open Credentials** button: it never crashes and never fakes a result.
+The only exception is **Demo Mode** (section 2d): there, a node without a key returns made-up output with an
+orange **SIMULATED** badge, so the guided tour never stops. Outside Demo Mode this never happens.
 
 ---
 
@@ -180,6 +182,34 @@ These are set in the app, not in `.env`. Nothing here is required: the defaults 
 
 ---
 
+## 2d. Demo Mode and the time-travel debugger (no key needed)
+
+**Demo Mode** (sidebar → **Demo Mode**, or the button on **Overview**) is a guided 5-step tour:
+1. the AI builder creates a "form → weather → email + Telegram + Discord" workflow (without a Gemini key or
+   internet it uses the built-in showcase workflow, labelled as such),
+2. it shows the form's QR code: scan it with your phone and submit,
+3. if nobody submits within 20 seconds it sends a sample submission itself ("Simulating a submission"),
+4. the run plays live on the canvas,
+5. a results card lists each service: sent / **simulated (no key)** / failed (with the reason).
+
+**Skip step** jumps ahead, **Stop demo** leaves at any time. What makes it better, all optional:
+
+| You provide | Effect in Demo Mode |
+|---|---|
+| Nothing | Works: showcase workflow, simulated submission, email / Telegram / Discord marked SIMULATED |
+| Gemini key | Step 1 is really built by Gemini |
+| SMTP, Telegram, Discord keys | Those steps really send (the email goes to the address typed in the form) |
+| Internet | The weather is real (Open-Meteo); without internet the weather step shows as failed, the tour continues |
+| Phone on the same Wi-Fi | You can submit the form yourself from the QR code |
+
+Demo workflows are saved with the tag `demo`: delete them from **Workflows** after rehearsing.
+
+**Time travel**: **Executions** → open a run → **Time travel**. A scrubber at the bottom of the editor replays the run
+step by step (←/→, Space to play, Esc to leave) and shows each step's input, output and duration; **Re-run from
+here** starts a new run from that node with the earlier results. Nothing to provide; it never changes the stored run.
+
+---
+
 ## 3. Machine requirements
 
 - [ ] **Node.js 20.11 or newer** (22 LTS recommended). Check: `node -v`
@@ -281,7 +311,7 @@ The day before:
 
 - [ ] `npm run check -- --send` shows **no FAIL** and no SKIP for the services you will show
 - [ ] `npm test` is green
-- [ ] Import the examples: **Workflows → Examples** → import all seven
+- [ ] Import the examples: **Workflows → Examples** → import all eleven (the resilience demo imports 3 linked workflows)
 - [ ] Open each imported workflow, read its note, set your own email address / city
 - [ ] **Form**: activate "Contact form → Discord embed + confirmation email", scan the QR code with your
       phone, submit, check the Discord card and the email
@@ -290,7 +320,9 @@ The day before:
       show that the bot remembers); activate it and open the chat page from your phone
 - [ ] **Weather email**: open "Daily weather → HTML email", click **Execute workflow**, check the inbox
 - [ ] Check your Gemini limits in AI Studio (do not burn the daily free quota while rehearsing)
-- [ ] Rehearse the whole demo once with a timer
+- [ ] Run **Demo Mode** twice: once without touching the phone (simulated submission), once submitting from the QR code
+- [ ] Open one finished run in **Time travel** and step through it
+- [ ] Rehearse the whole demo once with a timer (README → "Teacher demo script")
 
 On the day, in the room:
 
@@ -300,6 +332,20 @@ On the day, in the room:
 - [ ] `npm run check` once more (the school network may block email or Telegram)
 - [ ] Close n8n workflows that use the same Telegram bot
 - [ ] Keep the charger plugged in and disable sleep
+
+10 minutes before:
+
+- [ ] `npm start`, sign in, open **Overview** on the projector (check the Public URL card shows the room's address)
+- [ ] `npm run check` (no FAIL for the services you will show)
+- [ ] Scan one QR code with the phone on the room's Wi-Fi
+- [ ] Delete old `demo`-tagged workflows (Workflows → tag chip **demo** → select → delete) so the list looks clean
+- [ ] Phone volume off, notifications off; Telegram open on the bot chat
+
+Right after the demo:
+
+- [ ] **Revoke the keys** you used: Gmail App Password (myaccount.google.com/apppasswords → delete), Telegram
+      (@BotFather → `/revoke`), Discord (channel → Integrations → Webhooks → delete), Gemini (aistudio.google.com/apikey
+      → delete). Then delete the matching credentials and empty the values in `.env`
 
 Backup plan:
 

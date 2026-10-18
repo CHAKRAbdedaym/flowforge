@@ -137,6 +137,8 @@ export interface RunWorkflowRequest {
   destinationNode?: string;
   /** Reuse data of this execution for nodes that do not need to run again. */
   previousExecutionId?: string;
+  /** Time travel "Re-run from here": this node and everything after it run again, the rest reuses `previousExecutionId`. */
+  rerunFrom?: string;
 }
 
 export type ExecutionMode = 'manual' | 'trigger' | 'webhook' | 'schedule' | 'form' | 'chat' | 'error' | 'subworkflow' | 'retry';
@@ -177,6 +179,11 @@ export interface NodeRun {
   source: (TaskSource | null)[];
   data: { main: Item[][] };
   error?: SerializedError;
+  /**
+   * Demo Mode only: the node had no credential, so it returned made-up output (items carry `_simulated: true`).
+   * Never set outside Demo Mode (see docs/phase8-contracts.md).
+   */
+  simulated?: boolean;
   /** Lines printed with console.log (Code node). */
   logs?: string[];
 }

@@ -1,9 +1,10 @@
-import { NavLink } from 'react-router';
-import { LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router';
+import { LogOut, PanelLeftClose, PanelLeftOpen, Play } from 'lucide-react';
 import type { PublicUser } from '@flowforge/shared';
 import { Logo } from '../components/Logo';
 import { cn } from '../components/ui/cn';
 import { useLogout } from '../lib/auth';
+import { startDemo, useDemo } from '../demo/demo-store';
 import { ConnectionIndicator } from './ConnectionIndicator';
 import { MAIN_NAV, SETTINGS_NAV, type NavItem } from './nav';
 
@@ -29,6 +30,8 @@ function NavEntry({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
 
 export function Sidebar({ user, collapsed, onToggle }: { user: PublicUser; collapsed: boolean; onToggle: () => void }) {
   const logout = useLogout();
+  const navigate = useNavigate();
+  const starting = useDemo((s) => s.starting);
   const initials = `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase() || '?';
   return (
     <aside
@@ -56,6 +59,16 @@ export function Sidebar({ user, collapsed, onToggle }: { user: PublicUser; colla
       </nav>
 
       <div className="flex flex-col gap-1 border-t border-line p-2">
+        <button
+          onClick={() => void startDemo(navigate)}
+          disabled={starting}
+          className={cn('flex h-9 items-center gap-2.5 rounded-md bg-accent-soft px-2.5 text-[13px] font-medium text-accent hover:bg-accent hover:text-white disabled:opacity-60', collapsed && 'justify-center px-0')}
+          title="Demo Mode"
+          data-testid="demo-mode-button"
+        >
+          <Play size={16} />
+          {!collapsed && (starting ? 'Starting demo...' : 'Demo Mode')}
+        </button>
         <NavEntry item={SETTINGS_NAV} collapsed={collapsed} />
         <ConnectionIndicator collapsed={collapsed} />
         <div className={cn('flex items-center gap-2.5 rounded-md p-2', collapsed && 'flex-col p-1')}>

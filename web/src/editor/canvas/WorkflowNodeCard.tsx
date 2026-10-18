@@ -1,11 +1,13 @@
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { Check, CircleAlert, Hourglass, LoaderCircle, Pin, Plus, PowerOff, Radio, TriangleAlert } from 'lucide-react';
+import type { Item } from '@flowforge/shared';
 import { cn } from '../../components/ui/cn';
 import { aiOutput, aiSlots, iconFor, isTriggerType, resolveSubtitle, SLOT_LABELS, staticOutputs } from '../../lib/node-types';
 import { plural } from '../../lib/format';
 import { CLUSTER_WIDTH, listAllEdges, listEdges, SUB_SIZE } from '../graph';
 import { editor, useEditor } from '../store';
+import { PreviewBubble } from './PreviewBubble';
 import { useNodeTypeMap } from './types-context';
 
 const handleTop = (i: number, n: number) => `${((i + 1) / (n + 1)) * 100}%`;
@@ -24,6 +26,8 @@ export const WorkflowNodeCard = memo(function WorkflowNodeCard({ id, selected }:
   const handleKey = node ? `${(type?.inputs ?? []).length}:${(dynamic ?? staticOutputs(type, node)).length}:${aiOutput(type) ?? ''}` : '';
   const missing = useEditor((s) => (node ? s.missingCredentials[node.name] : undefined));
   const fresh = useEditor((s) => (node ? s.fresh.includes(node.name) : false));
+  // Demo Mode only: the last run of this node returned simulated output (no credential).
+  const simulated = useEditor((s) => (node ? s.runData?.[node.name]?.at(-1)?.simulated === true : false));
   // Switch/Filter outputs arrive from the server after the first render: re-measure the handles,
   // otherwise React Flow cannot draw the connections attached to the new handles.
   useEffect(() => {
@@ -39,6 +43,18 @@ export const WorkflowNodeCard = memo(function WorkflowNodeCard({ id, selected }:
     if (node) for (const e of listAllEdges(connections)) if (e.target === node.name && e.type && e.type !== 'main') counts[e.type] = (counts[e.type] ?? 0) + 1;
     return counts;
   }, [connections, node]);
+  // Hover preview of the last run: read on demand (no store subscription), bubble mounted only while hovering.
+  const [hover, setHover] = useState<Item[] | null>(null);
+  const name = node?.name;
+  const onEnter = useCallback(() => {
+    const s = useEditor.getState();
+    const status = name ? s.execution.nodes[name]?.status : undefined;
+    if (!name || !status || status === 'running') return;
+    const run = s.runData?.[name]?.at(-1);
+    const main = run?.data?.main ?? [];
+    setHover(main.find((l) => l && l.length) ?? main[0] ?? []);
+  }, [name]);
+  const onLeave = useCallback(() => setHover(null), []);
   if (!node) return null;
 
   const slots = aiSlots(type);
@@ -62,7 +78,9 @@ export const WorkflowNodeCard = memo(function WorkflowNodeCard({ id, selected }:
       data-status={status ?? 'idle'}
       data-disabled={node.disabled ? 'true' : undefined}
       data-sub-node={subType ?? undefined}
-      title={live?.error ? `${live.error.message}${live.error.hint ? `\n\n${live.error.hint}` : ''}` : undefined}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      title={live?.error && !hover ? `${live.error.message}${live.error.hint ? `\n\n${live.error.hint}` : ''}` : undefined}
     >
       <div
         className={cn(
@@ -70,6 +88,7 @@ export const WorkflowNodeCard = memo(function WorkflowNodeCard({ id, selected }:
           subType ? 'rounded-full' : trigger ? 'rounded-l-[42px] rounded-r-xl' : 'rounded-xl',
           selected ? 'border-accent shadow-[0_0_0_4px_rgba(240,89,42,0.18)]' : 'border-line-strong',
           status === 'running' && 'ff-node-running border-info',
+          status === 'error' && 'ff-shake',
           ok && !selected && 'border-success/80',
           status === 'error' && !selected && 'border-danger',
           status === 'waiting' && !selected && 'border-warning',
@@ -97,10 +116,20 @@ export const WorkflowNodeCard = memo(function WorkflowNodeCard({ id, selected }:
           </span>
         )}
         {status === 'running' && <LoaderCircle size={16} className="absolute bottom-1.5 right-1.5 animate-spin text-info" />}
-        {ok && <Check size={18} strokeWidth={3} className="absolute bottom-1.5 right-1.5 text-success" data-testid="node-success" />}
+        {ok && <Check size={18} strokeWidth={3} className="ff-check-pop absolute bottom-1.5 right-1.5 text-success" data-testid="node-success" />}
         {status === 'error' && <CircleAlert size={18} className="absolute bottom-1.5 right-1.5 text-danger" data-testid="node-error-badge" />}
         {status === 'waiting' && <Hourglass size={16} className="absolute bottom-1.5 right-1.5 text-warning" data-testid="node-waiting" />}
+        {hover && !live?.error && <PreviewBubble items={hover} title={node.name} className="bottom-full left-1/2 mb-2 -translate-x-1/2" />}
         {listening && <Radio size={15} className="absolute bottom-1.5 left-1.5 animate-pulse text-accent-hover" data-testid="node-listening" />}
+        {simulated && (
+          <span
+            className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded bg-[#f97316] px-1.5 py-px text-[9px] font-bold tracking-wide text-black shadow"
+            data-testid="node-simulated"
+            title="Demo Mode: this node has no credential, so its output is made up (_simulated: true)."
+          >
+            SIMULATED
+          </span>
+        )}
         {missing?.length && !node.disabled ? (
           <span
             className={cn('absolute text-warning', subType ? '-left-1 -top-1' : 'left-1.5 top-1.5')}

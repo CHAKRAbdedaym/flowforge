@@ -11,3 +11,4 @@ export * from './settings.js';
 export * from './ai.js';
 export * from './product.js';
 export * from './version-diff.js';
+export * from './timeline.js';

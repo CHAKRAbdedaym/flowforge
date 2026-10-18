@@ -65,7 +65,7 @@ export class TestListeners {
     for (const id of [...this.current.keys()]) this.cancel(id);
   }
 
-  async listen(workflow: WorkflowData & { id: string }, nodeName: string): Promise<TestListenResponse> {
+  async listen(workflow: WorkflowData & { id: string }, nodeName: string, opts: { demo?: boolean } = {}): Promise<TestListenResponse> {
     this.cancel(workflow.id);
     const node = workflow.nodes.find((n) => n.name === nodeName);
     if (!node) throw new TestListenError(`Node "${nodeName}" not found`);
@@ -78,7 +78,7 @@ export class TestListeners {
       throw new TestListenError((err as Error).message, (err as { hint?: string }).hint);
     }
     const runNow = (triggerItems?: Parameters<ExecutionService['start']>[0]['triggerItems']) =>
-      this.o.executions.start({ workflow, mode: 'manual', startNode: node.name, ...(triggerItems ? { triggerItems } : {}) }).executionId;
+      this.o.executions.start({ workflow, mode: 'manual', startNode: node.name, ...(opts.demo ? { demo: true } : {}), ...(triggerItems ? { triggerItems } : {}) }).executionId;
 
     if (kind === 'webhook' && type.webhook) {
       const params = withDefaults(type.properties, node.parameters ?? {});
@@ -101,6 +101,7 @@ export class TestListeners {
         methods,
         path,
         onUse: () => listener.stop('received'),
+        ...(opts.demo ? { demo: true } : {}),
       };
       const timer = setTimeout(() => listener.stop('timeout'), expiresAt.getTime() - Date.now());
       timer.unref();

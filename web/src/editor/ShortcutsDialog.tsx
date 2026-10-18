@@ -23,6 +23,9 @@ const SHORTCUTS: Array<[string, string]> = [
   ['Ctrl/Cmd + scroll', 'Zoom'],
   ['Esc', 'Close panels'],
   ['?', 'This help'],
+  ['← / →', 'Time travel: previous / next step'],
+  ['Space', 'Time travel: play / pause'],
+  ['Esc (time travel)', 'Leave time travel'],
 ];
 
 export function ShortcutsDialog() {

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router';
-import { Activity, CircleCheck, Clock, Plug, Workflow } from 'lucide-react';
+import { Link, useNavigate } from 'react-router';
+import { Activity, CircleCheck, Clock, Play, Plug, Workflow } from 'lucide-react';
 import { Alert } from '../components/ui/Alert';
 import { Card } from '../components/ui/Card';
 import { cn } from '../components/ui/cn';
@@ -8,6 +8,7 @@ import { Spinner } from '../components/ui/Spinner';
 import { errorMessage } from '../lib/api';
 import { useAuthStatus } from '../lib/auth';
 import { duration, plural, timeAgo } from '../lib/format';
+import { startDemo, useDemo } from '../demo/demo-store';
 import { useTitle } from '../lib/useTitle';
 import { StatusBadge } from './ExecutionsPage';
 import { PageHeader } from './PageHeader';
@@ -49,10 +50,25 @@ export function DashboardPage() {
   const q = useDashboard();
   const s = q.data;
   const name = auth.data?.user?.firstName;
+  const navigate = useNavigate();
+  const demoStarting = useDemo((d) => d.starting);
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Overview" subtitle={`${name ? `Welcome, ${name}. ` : ''}Here is the state of your FlowForge instance.`} />
+      <PageHeader
+        title="Overview"
+        subtitle={`${name ? `Welcome, ${name}. ` : ''}Here is the state of your FlowForge instance.`}
+        actions={
+          <button
+            onClick={() => void startDemo(navigate)}
+            disabled={demoStarting}
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-accent px-4 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-60"
+            data-testid="demo-mode-header-button"
+          >
+            <Play size={15} /> {demoStarting ? 'Starting demo...' : 'Demo Mode'}
+          </button>
+        }
+      />
       <div className="flex flex-col gap-6 px-8 py-6">
         <SystemCards />
 
@@ -65,6 +81,26 @@ export function DashboardPage() {
 
         {s && (
           <>
+            {s.workflows.total === 0 && (
+              <Card className="p-5" data-testid="get-started">
+                <div className="text-[15px] font-semibold">Get started</div>
+                <p className="mt-0.5 text-[13px] text-muted">No workflow yet. Pick one of these, it takes less than a minute.</p>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <Link to="/templates" className="rounded-lg border border-line bg-panel-2 p-4 transition-colors hover:border-accent">
+                    <div className="text-[13.5px] font-medium">1 · Use a template</div>
+                    <div className="mt-1 text-[12.5px] text-muted">Ready-made workflows: forms, email, Telegram, AI… one click imports them.</div>
+                  </Link>
+                  <Link to="/workflows" className="rounded-lg border border-line bg-panel-2 p-4 transition-colors hover:border-accent">
+                    <div className="text-[13.5px] font-medium">2 · Build your own</div>
+                    <div className="mt-1 text-[12.5px] text-muted">Workflows → Create workflow, then add a trigger or describe it in the AI bar.</div>
+                  </Link>
+                  <button type="button" onClick={() => void startDemo(navigate)} disabled={demoStarting} className="rounded-lg border border-line bg-panel-2 p-4 text-left transition-colors hover:border-accent disabled:opacity-60">
+                    <div className="text-[13.5px] font-medium">3 · Watch Demo Mode</div>
+                    <div className="mt-1 text-[12.5px] text-muted">A guided tour: AI builds a workflow, a form with QR code, a live run. Works without any key.</div>
+                  </button>
+                </div>
+              </Card>
+            )}
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Kpi testId="kpi-executions" icon={<Activity size={14} />} label="Executions (14 days)" value={String(s.totals.executions)} hint={`${s.totals.success} succeeded · ${s.totals.error} failed`} />
               <Kpi

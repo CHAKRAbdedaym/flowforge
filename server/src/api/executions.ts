@@ -12,6 +12,8 @@ const RunSchema = z.object({
   startNode: z.string().optional(),
   destinationNode: z.string().optional(),
   previousExecutionId: z.string().optional(),
+  /** Time travel "Re-run from here": this node and everything after it run again, the rest reuses `previousExecutionId`. */
+  rerunFrom: z.string().optional(),
 });
 
 const STATUSES = ['queued', 'running', 'waiting', 'success', 'error', 'canceled', 'crashed'] as const;
@@ -53,6 +55,26 @@ function startedFrom(execution: { runData: RunData; events: Array<{ type: string
   return undefined;
 }
 
+/** The node itself plus every node reachable through its connections (all types). */
+function downstreamOf(workflow: WorkflowData, from: string): Set<string> {
+  const seen = new Set<string>([from]);
+  const queue = [from];
+  while (queue.length) {
+    const name = queue.shift()!;
+    for (const outputs of Object.values(workflow.connections[name] ?? {})) {
+      for (const targets of outputs ?? []) {
+        for (const t of targets ?? []) {
+          if (!seen.has(t.node)) {
+            seen.add(t.node);
+            queue.push(t.node);
+          }
+        }
+      }
+    }
+  }
+  return seen;
+}
+
 export function executionsRouter(s: AppServices): Router {
   const router = Router();
 
@@ -91,14 +113,30 @@ export function executionsRouter(s: AppServices): Router {
   /** Manual run from the editor: runs the posted (possibly unsaved) workflow. Progress arrives over WebSocket. */
   router.post('/run', (req, res) => {
     const body = RunSchema.parse(req.body ?? {});
+    const workflow = body.workflow as unknown as WorkflowData;
     let previousRunData: RunData | undefined;
     if (body.previousExecutionId) previousRunData = s.executionsRepo.get(body.previousExecutionId)?.runData;
+    let startNode = body.startNode;
+    let reuseRunData: boolean | undefined;
+    if (body.rerunFrom) {
+      if (!workflow.nodes.some((n) => n.name === body.rerunFrom)) throw badRequest(`Node "${body.rerunFrom}" does not exist in this workflow`);
+      const previous = body.previousExecutionId ? s.executionsRepo.get(body.previousExecutionId) : undefined;
+      if (!previous) throw notFound(`Execution ${body.previousExecutionId ?? '(none given)'} not found: re-run from here needs it for the earlier results`);
+      const redo = downstreamOf(workflow, body.rerunFrom);
+      previousRunData = {};
+      for (const [name, runs] of Object.entries(previous.runData)) {
+        if (!redo.has(name) && workflow.nodes.some((n) => n.name === name)) previousRunData[name] = runs;
+      }
+      startNode = startNode ?? startedFrom(previous, workflow);
+      reuseRunData = true;
+    }
     const { executionId } = s.executions.start({
-      workflow: body.workflow as unknown as WorkflowData,
+      workflow,
       mode: 'manual',
-      startNode: body.startNode,
+      startNode,
       destinationNode: body.destinationNode,
       previousRunData,
+      ...(reuseRunData ? { reuseRunData } : {}),
     });
     res.status(202).json({ executionId });
   });

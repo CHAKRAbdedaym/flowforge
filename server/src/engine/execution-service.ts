@@ -47,6 +47,8 @@ export interface StartOptions {
   retryOf?: string;
   /** Retry: reuse `previousRunData` for the nodes that have it (see RunRequest.reuseRunData). */
   reuseRunData?: boolean;
+  /** Demo Mode (see RunRequest.demo). Only the demo routes set it; never taken from request bodies or workflow JSON. */
+  demo?: boolean;
 }
 
 /** Values read at the start of every execution (Settings page first, then .env). Phase 7, W4. */
@@ -351,6 +353,7 @@ export class ExecutionService {
         destinationNode: options.destinationNode,
         previousRunData: options.previousRunData,
         reuseRunData: options.reuseRunData,
+        demo: options.demo === true,
         resume: run.resume ? { state: run.resume.state, output: run.resume.output } : undefined,
         signal: controller.signal,
         timeoutMs: settingsTimeout && settingsTimeout > 0 ? settingsTimeout * 1000 : rt.timeoutMs,

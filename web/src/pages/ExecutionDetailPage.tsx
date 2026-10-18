@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { ArrowLeft, ExternalLink, RotateCcw, Trash2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, History, RotateCcw, Trash2 } from 'lucide-react';
 import type { ExecutionDetail, Item, NodeRun } from '@flowforge/shared';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Alert } from '../components/ui/Alert';
@@ -149,6 +149,11 @@ export function ExecutionDetailPage() {
             {detail.workflowId && (
               <Button size="sm" variant="secondary" icon={<ExternalLink size={14} />} onClick={() => navigate(`/workflow/${detail.workflowId}?execution=${detail.id}`)} data-testid="open-in-editor">
                 Open workflow
+              </Button>
+            )}
+            {detail.workflowId && !isActive && (
+              <Button size="sm" variant="secondary" icon={<History size={14} />} onClick={() => navigate(`/workflow/${detail.workflowId}?execution=${detail.id}&replay=1`)} data-testid="time-travel">
+                Time travel
               </Button>
             )}
             <Button size="sm" variant="danger" icon={<Trash2 size={14} />} disabled={isActive} title={isActive ? 'Stop it first' : undefined} onClick={() => setConfirm(true)} data-testid="execution-delete">

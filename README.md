@@ -1,28 +1,89 @@
 # FlowForge
 
-A visual workflow automation tool inspired by [n8n](https://n8n.io): triggers, nodes, expressions, live execution
-view, credentials and integrations, all running locally on Node.js + SQLite.
+A visual workflow automation tool inspired by [n8n](https://n8n.io), built as a school project: triggers, 50+ nodes,
+expressions, a live execution view, credentials, integrations (Telegram, Discord, Gemini, email, weather), an AI Agent
+and an AI Workflow Builder, all running locally on Node.js + SQLite. It runs side by side with real n8n (FlowForge uses
+port **5679**, n8n uses 5678).
 
-> **Status:** under construction, built in phases. See [FEATURES.md](FEATURES.md) for what is done and
-> tested. The full README (teacher demo script, Cloudflare tunnel, troubleshooting) arrives in Phase 8.
+> Feature status (what is implemented and tested): [FEATURES.md](FEATURES.md). What to prepare before a demo: [need.md](need.md).
 
-## Requirements
+![Overview dashboard (placeholder)](docs/screenshots/overview.png)
+![Editor with a live run (placeholder)](docs/screenshots/editor-live.png)
 
-- Node.js **20.11 or newer** (Node 22 LTS recommended)
-- npm (comes with Node)
+> The images above are **placeholders**: see [docs/screenshots/README.md](docs/screenshots/README.md) for the list of files to add.
 
-## Quick start
+## Install and run
+
+Requirements: Node.js **20.11 or newer** (Node 22 LTS recommended) and npm.
 
 ```bash
 npm install
 npm start
 ```
 
-Open **http://localhost:5679** and create the owner account.
+Open **http://localhost:5679** and create the owner account (first run only). The first `npm start` builds the app
+(15-30 seconds); later starts are instant unless the source changed. Data is stored in `./data`. Configuration is
+optional: copy `.env.example` to `.env` to change the port, the public URL, limits or SMTP fallbacks.
 
-The first `npm start` builds the app (15–30 seconds). Later starts are instant unless the source code
-changed. Data is stored in `./data`. Configuration is optional: copy `.env.example` to `.env` to change the
-port or the public URL.
+Development with hot reload: `npm run dev` and open http://localhost:5173.
+
+## Features
+
+- **Editor**: canvas with minimap, node creator, node panel (Input / Parameters / Output), expression editor with
+  autocomplete and live preview, undo/redo, copy/paste, auto-layout, Cmd/Ctrl+K command palette, pinned data,
+  partial runs.
+- **Live execution**: glowing nodes, particles on the edges, item counts, hover previews, an execution timeline.
+- **Engine**: n8n-style scheduler (loops, branches, merge), per-node retry / continue on fail / error output,
+  sub-workflows, Wait, timeouts, queue, crash recovery, Code node in a sandbox (QuickJS).
+- **Triggers**: Webhook (+ Respond to Webhook), Schedule, Form, Chat, Telegram, RSS, HTTP polling, Local File,
+  Error Trigger, Execute Workflow Trigger. Test URLs and production URLs.
+- **Nodes**: data transformation, files, HTTP Request, GraphQL, Send Email (SMTP), Telegram, Discord, Gemini,
+  Open-Meteo weather, AI Agent with memory and tools. Execute Command exists but is **off by default**.
+- **AI Workflow Builder**: describe an automation in a sentence and watch it being drawn.
+- **Product**: workflows list (tags, search, duplicate), import/export, version history, executions with node data,
+  variables, settings, template gallery, Overview dashboard.
+- **Demo Mode** and **Time travel debugger** (Phase 8, see the demo script below).
+- **Security**: owner login, encrypted credentials (AES-256-GCM), secrets never appear in execution data or logs.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    UI["React + Vite UI<br/>@xyflow/react, zustand, TanStack Query"]
+  end
+  subgraph Server["Node.js server (Express 5, port 5679)"]
+    API["REST API /api"]
+    WS["WebSocket /ws<br/>live events"]
+    PUB["Public URLs<br/>/webhook /form /chat"]
+    AWM["Active workflow manager<br/>schedule, poll, listeners"]
+    Q["Execution queue"]
+    ENG["Engine<br/>scheduler, expressions, items"]
+    NODES["Node registry<br/>one file per node"]
+    CRED["Credentials<br/>AES-256-GCM"]
+    AI["AI: agent + workflow builder"]
+  end
+  DB[("SQLite<br/>data/flowforge.db")]
+  FILES[("data/files, data/binary")]
+  EXT["Telegram, Discord, Gemini,<br/>SMTP, Open-Meteo, any HTTP API"]
+  UI -- REST --> API
+  UI <-- events --> WS
+  Phone["Phone / visitors"] --> PUB
+  PUB --> AWM
+  AWM --> Q
+  API --> Q
+  Q --> ENG
+  ENG --> NODES
+  NODES --> CRED
+  NODES --> EXT
+  ENG --> WS
+  ENG --> DB
+  NODES --> FILES
+  AI --> NODES
+  API --> DB
+```
+
+Monorepo (npm workspaces): `shared/` (types, forms, timeline helpers), `server/` (engine, nodes, API), `web/` (UI).
 
 ## Run a workflow without the editor (development)
 
@@ -81,9 +142,7 @@ execution id immediately, `startNode=<trigger>` picks the trigger. Full details:
 - `npm run check` makes one real call per integration and prints `OK`, `FAIL` (with the reason) or `SKIP`
   (with what to set where). Add `-- --send` to also post a test message in Discord.
 - A node without its key shows a clear error with an **Open Credentials** button. It never crashes.
-- **Workflows → Examples** has seven ready workflows: contact form → emails, contact form → Discord + email,
-  daily weather email, Telegram `/weather` assistant, website chatbot with Gemini, website chatbot with an AI
-  Agent, Telegram AI assistant.
+- **Workflows → Examples** (and **Templates**) has ready workflows, see [Examples](#examples).
 - The Telegram Trigger uses long polling: no public URL is needed. Only one program can read a bot, so do not
   use the same bot in n8n at the same time.
 
@@ -93,13 +152,32 @@ execution id immediately, `startNode=<trigger>` picks the trigger. Full details:
   (required), a **Simple Memory** (remembers each chat session) and any number of **tools** (Weather Tool,
   Calculator, HTTP Request Tool, Code Tool). The model decides when to call a tool; the agent stops after at most
   8 steps. In an execution every sub-node shows what it did (the model's turns, the memory, each tool call).
-- **AI Workflow Builder**: the bar at the top of the canvas ("Describe your automation…"). Type a sentence or
+- **AI Workflow Builder**: the bar "Describe your automation…" at the top of the canvas (open on an empty canvas, behind the **Build with AI** button otherwise). Type a sentence or
   click a suggestion: the workflow is drawn node by node. With a Gemini key the result is labelled
   **Built with Gemini**; without a key, or when Gemini fails, you get the closest ready-made template labelled
   **Offline: closest template**. A node that still needs a credential shows a yellow warning sign.
 - Both need only the Gemini key ([API_SETUP.md#google-gemini](API_SETUP.md#google-gemini)). See
   [need.md](need.md) section 2b for what works offline.
 - Examples: "Website chatbot with AI Agent" and "Telegram AI assistant (Agent + memory + tools)".
+
+## Examples
+
+Import them from **Workflows -> Examples** or the **Templates** page (one click). The JSON files are in [`examples/`](examples).
+
+| Example | Shows | Needs |
+|---|---|---|
+| Daily weather email | Schedule, Open-Meteo, designed HTML email | SMTP |
+| Contact form -> emails / Discord | Form Trigger, QR code, Discord embed | SMTP, Discord |
+| Telegram `/weather` assistant | Telegram Trigger, IF, Open-Meteo | Telegram bot |
+| Website chatbot (Gemini / AI Agent) | Chat Trigger, memory, tools | Gemini key |
+| Telegram AI assistant | Agent + memory + tools in a chat | Gemini, Telegram |
+| REST API with Webhook, Switch and Respond to Webhook | IF + Switch routing, status codes 201/200/204/422/400 | nothing |
+| RSS -> Discord digest | RSS trigger, Aggregate, one Discord embed | Discord |
+| CSV pipeline | Write/read file, parse CSV, Set, Summarize, Sort, report | nothing |
+| Resilience demo (3 workflows) | Retry, continue on fail, error output, Error Trigger workflow, sub-workflow | nothing |
+
+A file with several workflows (the resilience demo) is imported together: the error workflow and the sub-workflow are
+created and linked automatically.
 
 ## Open FlowForge from a phone
 
@@ -147,6 +225,12 @@ Every form URL and QR code now uses that address. The address changes each time 
 - **An integration does not work**: run `npm run check`, then see the table in
   [API_SETUP.md](API_SETUP.md#troubleshooting).
 - **The phone cannot open a form**: see [Open FlowForge from a phone](#open-flowforge-from-a-phone).
+- **The Telegram bot does not answer**: only one program can read a bot. Stop n8n or any other program using the same
+  bot token. Run `npm run check`.
+- **Forms or QR codes show the wrong address**: set `PUBLIC_URL` in `.env` and restart.
+- **Forgot the password**: `npm run user:reset`, then create the owner again (workflows are kept).
+- **A node shows a key warning**: open **Credentials**, add the key, click **Test**. Without a key, Demo Mode shows
+  orange **SIMULATED** results instead; normal runs always give a clear error.
 
 ## Commands
 
@@ -159,3 +243,29 @@ Every form URL and QR code now uses that address. The address changes each time 
 | `npm run check` | One real call per integration (email, forms, Telegram, Discord, weather, Gemini): OK / FAIL / SKIP. `-- --send` also posts to Discord |
 | `npm run check:email` | Sends a real test email with your SMTP credential (or `.env`) and prints OK / FAIL with the reason. Add `-- someone@example.com` to choose the recipient |
 | `npm run user:reset` | Forgot the password? Deletes user accounts so you can create a new owner (workflows are kept) |
+
+## Teacher demo script (5 minutes)
+
+Before the class: `npm start`, sign in, open the page on the projector, have your phone on the same Wi-Fi (or the
+Cloudflare tunnel running, see above), and check `npm run check`. Keep real n8n open on http://localhost:5678 in
+another tab if you want to compare. Click labels come from the menu (Overview, Workflows, Templates, Executions,
+Credentials, Variables, Settings).
+
+> The **Demo Mode** and **Time travel** labels below follow the Phase 8 contract
+> ([docs/phase8-contracts.md](docs/phase8-contracts.md)); check them once on the final build.
+
+| # | Minute | Click | Say | If it fails |
+|---|---|---|---|---|
+| 1 | 0:00 | Sidebar **Overview** | "This is FlowForge, my own n8n: runs per day, success rate, failing workflows and the state of every integration." | Refresh the page. Empty charts are normal on a fresh database: continue. |
+| 2 | 0:30 | **Templates** -> pick "REST API with Webhook, Switch and Respond to Webhook" or "CSV pipeline" -> **Use template** | "One click imports a ready workflow. They are plain n8n-style JSON, nodes and connections." | Use **Workflows -> Examples** instead. Both import the same files. |
+| 3 | 1:00 | In the editor: **Execute workflow** (use "CSV pipeline"; it needs no key). Open a node to show Input / Parameters / Output | "Watch the nodes light up and the data flow along the edges. Each node shows what went in and what came out." | If a node is red, click it: the error says what to fix. Fall back to the next step. |
+| 4 | 1:45 | **Templates** -> "Contact form -> emails" (or open an imported form workflow) -> click the Form Trigger -> **Listen for test event** -> scan the **QR code** with the phone -> submit the form | "A public form with its own page and QR code. My phone fills it in and the workflow runs live." | Phone cannot load the page: open the form link on the laptop instead, or switch to the Cloudflare tunnel (`PUBLIC_URL`). No SMTP key: the email node shows an **Open Credentials** error, say so and move on. |
+| 5 | 2:45 | **Workflows** -> **Create workflow**: on the empty canvas the AI bar ("Describe your automation…") is already open at the top; type "email me the weather every morning" and press **Build** | "The AI Workflow Builder turns a sentence into a workflow, validated and laid out automatically." | No Gemini key or no internet: it shows the closest template labelled **Offline: closest template**. This is by design, keep going. |
+| 6 | 3:30 | Sidebar **Demo Mode** button | "Demo Mode does the whole story on its own: build, QR, wait for a submission (or simulate one), run, results." | Press **Skip step** to jump over a slow step, **Stop demo** to leave. Without keys the integration nodes show an orange **SIMULATED** badge: explain that simulation only exists in Demo Mode. |
+| 7 | 4:15 | **Executions** -> open the last run -> **Time travel**; drag the scrubber at the bottom of the editor | "I can replay any execution step by step and see exactly what each node received and returned." | If the replay does not open, stay on the execution page: it already shows every node's input and output. |
+| 8 | 4:45 | In the editor: clock icon **Version history** (top bar) | "Every save is a version; I can restore any of them." | Skip it, the point is already made. |
+
+Wrap-up line: "Everything runs offline except the integrations; a missing key is always a clear message, never a crash."
+
+Backup plan if the whole app misbehaves: restart with `npm start`, sign in again, and use **Workflows -> Examples**
+-> "CSV pipeline" which needs no network and no key.

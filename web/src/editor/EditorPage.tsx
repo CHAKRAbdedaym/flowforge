@@ -19,6 +19,9 @@ import { CommandPalette } from './CommandPalette';
 import { NodeCreator } from './creator/NodeCreator';
 import { useEditorShortcuts, useLiveExecution, useMissingCredentials } from './hooks';
 import { ExecutionLog } from './log/ExecutionLog';
+import { ExecutionTimeline } from './ExecutionTimeline';
+import { TimeTravelBar } from './timetravel/TimeTravelBar';
+import { DemoOverlay } from '../demo/DemoOverlay';
 import { NodeDetailsView } from './ndv/NodeDetailsView';
 import { ShortcutsDialog } from './ShortcutsDialog';
 import { editor, useEditor } from './store';
@@ -58,7 +61,10 @@ function EditorShell({ list, byType }: { list: NodeTypeInfo[]; byType: Map<strin
         <NodeCreator types={list} />
         <ChatPanel />
         <BuilderBar />
+        <DemoOverlay />
       </div>
+      <TimeTravelBar />
+      <ExecutionTimeline />
       <ExecutionLog />
       <NodeDetailsView types={byType} />
       <CommandPalette
@@ -109,6 +115,7 @@ export function EditorPage() {
   const { id } = useParams();
   const [search] = useSearchParams();
   const requestedExecution = search.get('execution');
+  const replaying = search.get('replay') === '1';
   const workflow = useWorkflow(id);
   const nodeTypes = useNodeTypes();
   const loadedId = useEditor((s) => s.workflowId);
@@ -116,7 +123,8 @@ export function EditorPage() {
   useEffect(() => {
     if (workflow.data && workflow.data.id !== useEditor.getState().workflowId) {
       editor.load(workflow.data);
-      void restoreLastRun(workflow.data.id, requestedExecution);
+      // Time travel loads the execution itself (TimeTravelBar).
+      if (!replaying) void restoreLastRun(workflow.data.id, requestedExecution);
     }
   }, [workflow.data]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => editor.reset(), []);

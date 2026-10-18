@@ -1,4 +1,5 @@
-import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, Hourglass, LoaderCircle, Pin, PowerOff, RotateCcw } from 'lucide-react';
+import { useSearchParams } from 'react-router';
+import { ChevronDown, History, ChevronUp, CircleAlert, CircleCheck, Hourglass, LoaderCircle, Pin, PowerOff, RotateCcw } from 'lucide-react';
 import { cn } from '../../components/ui/cn';
 import { duration, plural } from '../../lib/format';
 import { editor, isRunning, useEditor, type RunState } from '../store';
@@ -18,6 +19,7 @@ const STATUS_TEXT: Partial<Record<RunState, string>> = {
 export function ExecutionLog() {
   const open = useEditor((s) => s.logOpen);
   const ex = useEditor((s) => s.execution);
+  const [, setSearch] = useSearchParams();
   if (ex.status === 'idle') return null;
   const total = ex.finishedAt && ex.startedAt ? ex.finishedAt - ex.startedAt : undefined;
   return (
@@ -38,7 +40,27 @@ export function ExecutionLog() {
         {ex.destination && <span className="text-subtle">· step "{ex.destination}"</span>}
         {total !== undefined && <span className="text-subtle">· {duration(total)}</span>}
         {ex.error && !isRunning(ex.status) && <span className="truncate text-danger">· {ex.error.message}</span>}
-        <span className="ml-auto text-subtle">{open ? <ChevronDown size={15} /> : <ChevronUp size={15} />}</span>
+        {ex.id && !isRunning(ex.status) && ex.log.length > 0 && (
+          <span
+            role="button"
+            tabIndex={0}
+            className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-[11.5px] text-accent-hover hover:bg-accent-soft"
+            data-testid="log-time-travel"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSearch({ execution: ex.id!, replay: '1' });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.stopPropagation();
+                setSearch({ execution: ex.id!, replay: '1' });
+              }
+            }}
+          >
+            <History size={12} /> Time travel
+          </span>
+        )}
+        <span className={ex.id && !isRunning(ex.status) && ex.log.length > 0 ? 'text-subtle' : 'ml-auto text-subtle'}>{open ? <ChevronDown size={15} /> : <ChevronUp size={15} />}</span>
       </button>
       {ex.status === 'waiting' && ex.waiting && (
         <div className="flex flex-wrap items-center gap-2 border-t border-line bg-warning/5 px-4 py-2 text-[12.5px]" data-testid="waiting-info">

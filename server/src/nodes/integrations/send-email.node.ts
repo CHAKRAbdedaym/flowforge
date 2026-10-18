@@ -110,6 +110,12 @@ export default defineNode({
       ],
     },
   ],
+  /** Demo Mode: what a sent email would look like (no credential, nothing is sent). */
+  simulate(ctx, _item, i) {
+    const to = String(ctx.getNodeParameter('toEmail', i, '') ?? '');
+    return { accepted: to ? [to] : [], rejected: [], messageId: 'simulated' };
+  },
+
   async execute(ctx) {
     const credential = await ctx.getCredentials('smtp');
     const settings = smtpSettings(credential.data);

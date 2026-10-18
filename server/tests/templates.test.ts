@@ -74,6 +74,18 @@ describe('templates API', () => {
     expect(a.nodes.find((n) => n.webhookId)?.webhookId).not.toBe(b.nodes.find((n) => n.webhookId)?.webhookId);
   });
 
+  it('imports a multi-workflow example from the gallery with its references rewritten', async () => {
+    const detail = (await agent.get('/api/templates/example:resilience-demo').expect(200)).body as TemplateDetail;
+    expect(detail.nodeTypes).toContain('flowforge.errorTrigger');
+    const main = (await agent.post('/api/templates/example:resilience-demo/import').expect(201)).body as WorkflowRecord;
+    const all = (await agent.get('/api/workflows').expect(200)).body as { id: string; name: string }[];
+    const handler = all.find((w) => w.name === 'Resilience: error handler');
+    expect(handler).toBeDefined();
+    expect(main.settings?.errorWorkflow).toBe(handler!.id);
+    const sub = all.find((w) => w.name.startsWith('Resilience: calculate price'))!;
+    expect(main.nodes.find((n) => n.type === 'flowforge.executeWorkflow')!.parameters.workflowId).toBe(sub.id);
+  });
+
   it('answers 404 for unknown templates', async () => {
     await agent.get('/api/templates/template:nope').expect(404);
     await agent.post('/api/templates/example:nope/import').expect(404);

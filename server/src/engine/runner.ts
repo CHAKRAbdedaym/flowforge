@@ -18,6 +18,7 @@ import {
   ExecutionCanceledError,
   ExecutionTimeoutError,
   FlowError,
+  MissingCredentialError,
   NodeOperationError,
   WaitSignal,
   WorkflowOperationError,
@@ -52,6 +53,11 @@ export interface RunRequest {
    * reuses it instead of executing again. The first node without data runs, and everything after it runs fresh.
    */
   reuseRunData?: boolean;
+  /**
+   * Demo Mode: a node that throws MissingCredentialError returns simulated output instead. Set ONLY by the demo
+   * routes (never read from workflow JSON or request bodies).
+   */
+  demo?: boolean;
   /** Continue a paused execution: its saved state and the output of the node that waited. */
   resume?: { state: EngineState; output: Item[] };
   signal?: AbortSignal;
@@ -412,10 +418,12 @@ export class WorkflowRunner {
     let status: NodeRunStatus = 'success';
     let error: FlowError | undefined;
     let logs: string[] | undefined;
+    let simulated = false;
     const finish = () => {
       const run: NodeRun = { startTime, executionTime: Date.now() - startTime, status, source: task.sources, data: { main: outputs } };
       if (error) run.error = serializeError(error, node.name);
       if (logs?.length) run.logs = logs;
+      if (simulated) run.simulated = true;
       (runData[node.name] ??= []).push(run);
       req.hooks?.nodeFinished?.(node.name, runIndex, run);
     };
@@ -436,6 +444,7 @@ export class WorkflowRunner {
         const result = await this.execute(req, node, type, task, live, runIndex, regularCount);
         outputs = result.outputs;
         logs = result.logs;
+        simulated = result.simulated === true;
         if (result.error) {
           error = result.error;
           status = 'error';
@@ -586,6 +595,22 @@ export class WorkflowRunner {
     };
   }
 
+  /** Demo Mode: the node's input items marked `_simulated: true` (+ the node's own made-up fields). */
+  private simulateOutputs(type: NodeType, ctx: NodeExecutionContext, inputs: Item[][], regularCount: number): Item[][] {
+    const source = inputs[0]?.length ? inputs[0] : [{ json: {} } as Item];
+    const out: Item[][] = Array.from({ length: Math.max(regularCount, 1) }, () => []);
+    out[0] = source.map((item, i) => {
+      let extra: JsonObject = {};
+      try {
+        extra = type.simulate?.(ctx, item, i) ?? {};
+      } catch {
+        extra = {};
+      }
+      return { json: { ...item.json, ...extra, _simulated: true }, pairedItem: { item: i } };
+    });
+    return out;
+  }
+
   /** Runs the node's code with retries and the "On Error" setting applied. */
   private async execute(
     req: RunRequest,
@@ -595,7 +620,7 @@ export class WorkflowRunner {
     live: Live,
     runIndex: number,
     regularCount: number,
-  ): Promise<{ outputs: Item[][]; errorItems: Item[]; logs: string[]; error?: FlowError }> {
+  ): Promise<{ outputs: Item[][]; errorItems: Item[]; logs: string[]; error?: FlowError; simulated?: boolean }> {
     if (!type.execute) return { outputs: [], errorItems: [], logs: [] };
     const inputs = node.executeOnce ? task.inputs.map((list) => list.slice(0, 1)) : task.inputs;
     const tries = node.retryOnFail ? clamp(node.maxTries ?? 3, 1, 5) : 1;
@@ -628,6 +653,7 @@ export class WorkflowRunner {
         filesRoot: this.deps.filesRoot,
         instanceSettings: this.deps.instanceSettings,
         chatMemory: this.chatMemory,
+        demo: req.demo === true,
       });
       const ctx = new NodeExecutionContext({
         ...options(node, type, runIndex),
@@ -646,6 +672,10 @@ export class WorkflowRunner {
       } catch (err) {
         if (signal.aborted) throw signal.reason;
         if (err instanceof WaitSignal) throw err;
+        // Demo Mode only, and only for a missing credential: every other error stays an error.
+        if (req.demo === true && err instanceof MissingCredentialError) {
+          return { outputs: this.simulateOutputs(type, ctx, inputs, regularCount), errorItems: [], logs: ctx.logs, simulated: true };
+        }
         lastError = err;
         lastLogs = ctx.logs;
         if (attempt < tries) {
