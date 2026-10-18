@@ -65,7 +65,8 @@ export default defineNode({
     group: 'integration',
     version: 1,
     defaults: { name: 'Weather', color: '#38bdf8' },
-    subtitle: '{{operation === "searchLocation" ? "Search: " + query : (locationMode === "city" ? city : latitude + ", " + longitude)}}',
+    // The canvas only fills simple {{parameter}} placeholders (web/src/lib/node-types.ts resolveSubtitle).
+    subtitle: '{{operation}}',
     inputs: [{ type: 'main' }],
     outputs: [{ type: 'main' }],
     keywords: ['weather', 'forecast', 'temperature', 'rain', 'meteo', 'open-meteo', 'geocoding', 'city', 'wind'],

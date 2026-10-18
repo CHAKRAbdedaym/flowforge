@@ -35,6 +35,14 @@ describe('node registry', () => {
     expect(registry.list().find((n) => n.type === 'flowforge.if')?.properties.length).toBeGreaterThan(0);
   });
 
+  it('uses only simple {{parameter}} placeholders in subtitles (the canvas cannot evaluate code there)', async () => {
+    const registry = await getTestRegistry();
+    for (const info of registry.list()) {
+      const subtitle = (info as { subtitle?: string }).subtitle ?? '';
+      expect(subtitle, info.type).toMatch(/^(?:[^{}]|\{\{\s*[\w.]+\s*\}\})*$/);
+    }
+  });
+
   it('rejects invalid node files with a readable error', () => {
     const registry = new NodeRegistry();
     const valid = defineNode({
