@@ -28,7 +28,8 @@ export default defineCredential({
       await generateContent(
         { apiKey: String(data.apiKey ?? ''), host: String(data.host ?? '') || undefined },
         { model, prompt: 'Reply with the single word OK.', maxRetries: 0 },
-        { signal: options.signal, timeoutMs: 20_000 },
+        // Thinking models can take 10-20 s on a slow connection: same limit as the AI Workflow Builder.
+        { signal: options.signal, timeoutMs: 45_000 },
       );
       return { ok: true, message: `The key works (model ${model} answered).` };
     } catch (err) {
