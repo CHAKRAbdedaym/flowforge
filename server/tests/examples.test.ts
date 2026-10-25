@@ -52,9 +52,9 @@ function useWeatherMock(wf: WorkflowRecord): WorkflowRecord {
 }
 
 describe('example workflows', () => {
-  it('lists the eleven examples with a description', async () => {
+  it('lists the twelve examples with a description', async () => {
     const list = (await agent.get('/api/examples')).body as { id: string; name: string; description: string; nodeCount: number }[];
-    expect(list.map((e) => e.id)).toEqual(['contact-form-discord', 'csv-pipeline', 'daily-weather-email', 'form-to-email', 'resilience-demo', 'rest-api-webhook', 'rss-discord-digest', 'telegram-ai-assistant', 'telegram-assistant', 'website-chatbot-agent', 'website-chatbot']);
+    expect(list.map((e) => e.id)).toEqual(['contact-form-discord', 'csv-pipeline', 'daily-weather-email', 'form-to-email', 'resilience-demo', 'rest-api-webhook', 'rss-discord-digest', 'teacher-showcase', 'telegram-ai-assistant', 'telegram-assistant', 'website-chatbot-agent', 'website-chatbot']);
     for (const example of list) expect(example.description.length, example.id).toBeGreaterThan(40);
     // Every node type and every credential-free default of the examples exists in this build.
     for (const example of list) {
@@ -271,6 +271,48 @@ describe('example workflows', () => {
     // South 10*400 + 2*950 = 5900, North 3*900 + 4*420 = 4380, East 6*300 + 5*410 = 3850
     expect(report[0]).toBe('region,sum_revenue,sum_qty');
     expect(report.slice(1)).toEqual(['South,5900,12', 'North,4380,7', 'East,3850,11']);
+  });
+
+  it('Teacher showcase: weather → Code → IF / Merge → Wait → AI Agent → email + Telegram + Discord, and the error output', async () => {
+    await credential('Mail', 'smtp', smtpData(smtp.port, LOGIN));
+    await credential('Channel', 'discordWebhookApi', { webhookUri: discord.url });
+    await credential('Bot', 'telegramApi', { accessToken: TG_TOKEN, baseUrl: telegram.url, chatId: '777' });
+    await credential('Gemini', 'googlePalmApi', { apiKey: 'AIzaSy-example-key-123456', host: gemini.url });
+    const imported = useWeatherMock(await importExample('teacher-showcase'));
+    // The weather mock knows a few cities only: Casablanca instead of Marrakesh.
+    const nodes = imported.nodes.map((n) => (n.name === 'Demo settings' ? JSON.parse(JSON.stringify(n).replace('Marrakesh, Morocco', 'Casablanca, Morocco')) : n));
+    const wf = { ...imported, nodes };
+    gemini.enqueue(answer('Sunny days ahead in Marrakech, perfect for a walk.'));
+
+    const res = await agent.post('/api/executions/run').send({ workflow: { id: wf.id, name: wf.name, nodes: wf.nodes, connections: wf.connections, settings: wf.settings } });
+    const done = await waitFor(async () => {
+      const d = (await agent.get(`/api/executions/${res.body.executionId}`)).body;
+      return ['success', 'error'].includes(d.status) ? d : undefined;
+    }, 15_000, 'showcase run');
+    expect(done.status, JSON.stringify(done.error)).toBe('success');
+    const out = (node: string, o = 0) => (done.runData[node]?.at(-1)?.data.main[o] ?? []).map((i: { json: JsonObject }) => i.json);
+
+    // 1 weather item becomes one item per day, split by the IF and merged back.
+    const days = out('One item per day');
+    expect(days.length).toBeGreaterThan(1);
+    expect(out('Warm: t-shirt').length + out('Cool: jacket').length).toBe(days.length);
+    expect(out('Merge branches')).toHaveLength(days.length);
+    expect(out('Build report')[0]).toMatchObject({ days: days.length });
+    expect(out('AI Agent')[0]!.output).toBe('Sunny days ahead in Marrakech, perfect for a walk.');
+
+    // The three messages go out in parallel.
+    expect(smtp.messages).toHaveLength(1);
+    expect(smtp.messages[0]!.envelope.to).toEqual([process.env.CHECK_EMAIL_TO || 'you@example.com']);
+    expect(smtp.messages[0]!.mail.html).toContain('Sunny days ahead in Marrakech');
+    const tg = telegram.calls('sendMessage')[0]!;
+    expect(tg.body).toMatchObject({ chat_id: '777' });
+    expect(String((tg.body as JsonObject).text)).toContain('Sunny days ahead');
+    const post = discord.requests.find((r) => r.method === 'POST')!;
+    expect((post.body as { embeds: { description: string }[] }).embeds[0]!.description).toContain('Sunny days ahead');
+
+    // The broken API is retried, then handled by the error output (the success branch never runs).
+    expect(out('Error handled')[0]!.result).toMatch(/failed 3 times/);
+    expect(done.runData['API answered']).toBeUndefined();
   });
 
   it('Resilience demo: three linked workflows; retry, error output, continue on fail, sub-workflow and the error workflow', async () => {

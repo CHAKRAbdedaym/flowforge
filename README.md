@@ -222,6 +222,7 @@ Import them from **Workflows -> Examples** or the **Templates** page (one click)
 
 | Example | Shows | Needs |
 |---|---|---|
+| **Teacher showcase** (start here) | One click: real weather, Code, IF + Merge, Wait, AI Agent briefing, then email + Telegram + Discord in parallel, plus retry + error output | Works without keys (those nodes show a clear error); all keys for the full show |
 | Daily weather email | Schedule, Open-Meteo, designed HTML email | SMTP |
 | Contact form -> emails / Discord | Form Trigger, QR code, Discord embed | SMTP, Discord |
 | Telegram `/weather` assistant | Telegram Trigger, IF, Open-Meteo | Telegram bot |

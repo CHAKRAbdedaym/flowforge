@@ -11,3 +11,6 @@ web/playwright-report/
 
 # Local AI assistant notes (kept on this computer only)
 CLAUDE.md
+
+# Office / editor lock files
+.~lock.*#

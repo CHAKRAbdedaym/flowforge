@@ -1,0 +1,286 @@
+{
+  "name": "Teacher showcase: weather → AI → email, Telegram, Discord",
+  "meta": {
+    "description": "One click shows most of FlowForge live: real weather, data transformation (Code, IF branches, Merge), a Wait, an AI Agent that writes a briefing, then email + Telegram + Discord at the same time, plus a retry + error output demo. Keys come from Credentials or .env; a missing key never stops the run.",
+    "categories": ["AI", "Email", "Messaging", "Data"]
+  },
+  "nodes": [
+    {
+      "id": "ts-start",
+      "name": "Start demo",
+      "type": "flowforge.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "parameters": {}
+    },
+    {
+      "id": "ts-settings",
+      "name": "Demo settings",
+      "type": "flowforge.set",
+      "typeVersion": 1,
+      "position": [220, 300],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "s1", "name": "city", "value": "Marrakesh, Morocco", "type": "string" },
+            { "id": "s2", "name": "warmFrom", "value": 22, "type": "number" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ts-weather",
+      "name": "Get weather",
+      "type": "flowforge.openMeteo",
+      "typeVersion": 1,
+      "position": [440, 300],
+      "parameters": {
+        "operation": "getWeather",
+        "locationMode": "city",
+        "city": "={{ $json.city }}",
+        "include": ["current", "daily"],
+        "forecastDays": 5
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "ts-split",
+      "name": "One item per day",
+      "type": "flowforge.code",
+      "typeVersion": 1,
+      "position": [660, 300],
+      "parameters": {
+        "jsCode": "// The weather node returns one item with a list of days: turn it into one item per day.\nconst w = $input.first().json;\nconst warmFrom = $('Demo settings').first().json.warmFrom;\nreturn w.daily.map((d) => ({\n  city: w.location.name,\n  date: d.date,\n  emoji: d.emoji,\n  description: d.description,\n  min: d.temperatureMin,\n  max: d.temperatureMax,\n  unit: w.units.temperature,\n  warmFrom,\n}));"
+      }
+    },
+    {
+      "id": "ts-if",
+      "name": "Warm day?",
+      "type": "flowforge.if",
+      "typeVersion": 1,
+      "position": [880, 300],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "id": "c1", "leftValue": "={{ $json.max }}", "rightValue": "={{ $json.warmFrom }}", "operator": { "type": "number", "operation": "gte" } }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ts-warm",
+      "name": "Warm: t-shirt",
+      "type": "flowforge.set",
+      "typeVersion": 1,
+      "position": [1100, 180],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": { "assignments": [{ "id": "w1", "name": "advice", "value": "☀️ warm, t-shirt weather", "type": "string" }] }
+      }
+    },
+    {
+      "id": "ts-cool",
+      "name": "Cool: jacket",
+      "type": "flowforge.set",
+      "typeVersion": 1,
+      "position": [1100, 420],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": { "assignments": [{ "id": "k1", "name": "advice", "value": "🧥 cool, take a jacket", "type": "string" }] }
+      }
+    },
+    {
+      "id": "ts-merge",
+      "name": "Merge branches",
+      "type": "flowforge.merge",
+      "typeVersion": 1,
+      "position": [1320, 300],
+      "parameters": { "mode": "append" }
+    },
+    {
+      "id": "ts-wait",
+      "name": "Wait 2 seconds",
+      "type": "flowforge.wait",
+      "typeVersion": 1,
+      "position": [1540, 300],
+      "parameters": { "resume": "timeInterval", "amount": 2, "unit": "seconds" }
+    },
+    {
+      "id": "ts-report",
+      "name": "Build report",
+      "type": "flowforge.code",
+      "typeVersion": 1,
+      "position": [1760, 300],
+      "parameters": {
+        "jsCode": "// Many items in, one summary item out.\nconst days = $input.all().map((i) => i.json).sort((a, b) => a.date.localeCompare(b.date));\nconst lines = days.map((d) => `${d.emoji} ${d.date}: ${d.min} to ${d.max} ${d.unit}, ${d.description} (${d.advice})`);\nreturn [{\n  city: days[0]?.city ?? 'your city',\n  days: days.length,\n  warmDays: days.filter((d) => d.advice.includes('warm')).length,\n  report: lines.join('\\n'),\n}];"
+      }
+    },
+    {
+      "id": "ts-agent",
+      "name": "AI Agent",
+      "type": "flowforge.aiAgent",
+      "typeVersion": 1,
+      "position": [1980, 300],
+      "parameters": {
+        "prompt": "=Write a friendly weather briefing for students in {{ $json.city }} in at most 3 short sentences, based on this {{ $json.days }}-day forecast:\n{{ $json.report }}",
+        "systemMessage": "You are a cheerful assistant for a school demo. Plain text only, no Markdown, no lists. Never invent numbers that are not in the forecast."
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ts-model",
+      "name": "Gemini Chat Model",
+      "type": "flowforge.geminiChatModel",
+      "typeVersion": 1,
+      "position": [1980, 540],
+      "parameters": { "model": "default" }
+    },
+    {
+      "id": "ts-email",
+      "name": "Send email",
+      "type": "flowforge.sendEmail",
+      "typeVersion": 1,
+      "position": [2240, 100],
+      "parameters": {
+        "toEmail": "={{ $env.CHECK_EMAIL_TO || 'you@example.com' }}",
+        "subject": "=🌤️ FlowForge showcase: weather in {{ $('Build report').item.json.city }}",
+        "emailFormat": "template",
+        "templateTitle": "=Weather in {{ $('Build report').item.json.city }}",
+        "templateMessage": "={{ $json.output || 'The AI step was skipped (no Gemini key or no answer), here is the raw forecast.' }}\n\n**Next {{ $('Build report').item.json.days }} days**\n{{ $('Build report').item.json.report }}",
+        "templateFooter": "Sent by the FlowForge teacher showcase workflow.",
+        "templateColor": "#ff6d5a"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ts-telegram",
+      "name": "Send Telegram",
+      "type": "flowforge.telegram",
+      "typeVersion": 1,
+      "position": [2240, 300],
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "",
+        "text": "=🌤️ {{ $('Build report').item.json.city }}\n\n{{ $json.output || $('Build report').item.json.report }}",
+        "parseMode": "none"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ts-discord",
+      "name": "Post to Discord",
+      "type": "flowforge.discord",
+      "typeVersion": 1,
+      "position": [2240, 500],
+      "parameters": {
+        "operation": "sendMessage",
+        "content": "🌤️ **FlowForge showcase**",
+        "embeds": {
+          "embed": [
+            {
+              "title": "=Weather in {{ $('Build report').item.json.city }}",
+              "description": "={{ $json.output || 'AI step skipped: raw forecast below.' }}",
+              "color": "#ff6d5a",
+              "footerText": "FlowForge teacher showcase",
+              "timestamp": "now",
+              "fieldsJson": "={{ [{ name: 'Forecast', value: $('Build report').item.json.report.slice(0, 1000) }, { name: 'Warm days', value: String($('Build report').item.json.warmDays), inline: true }] }}"
+            }
+          ]
+        },
+        "options": { "username": "FlowForge" }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ts-broken",
+      "name": "Call a broken API",
+      "type": "flowforge.httpRequest",
+      "typeVersion": 1,
+      "position": [440, 640],
+      "parameters": { "method": "GET", "url": "http://127.0.0.1:59999/status" },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 300,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "ts-ok",
+      "name": "API answered",
+      "type": "flowforge.noOp",
+      "typeVersion": 1,
+      "position": [700, 560],
+      "parameters": {}
+    },
+    {
+      "id": "ts-handled",
+      "name": "Error handled",
+      "type": "flowforge.set",
+      "typeVersion": 1,
+      "position": [700, 720],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "h1", "name": "result", "value": "=The API failed 3 times ({{ $json.error }}), but the workflow kept going thanks to the error output.", "type": "string" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ts-note",
+      "name": "How to show it",
+      "type": "flowforge.stickyNote",
+      "typeVersion": 1,
+      "position": [-20, -120],
+      "parameters": {
+        "content": "## Teacher showcase\n1. Click **Execute workflow** and watch the nodes light up (particles = items flowing).\n2. **Get weather**: real data, no key. **One item per day** (Code) turns 1 item into 5.\n3. **Warm day?** splits the days, **Merge** joins them, **Wait** pauses 2 s live.\n4. **AI Agent** + Gemini writes the briefing, then **email, Telegram and Discord** go out in parallel.\n5. Bottom branch: an API that is down, **retried 3 times**, then the **error output** handles it.\n6. Open any node: INPUT / OUTPUT. Then **Executions → Time travel** to replay the run.\n\nNo key for a service? That node shows a clear error and the run still finishes.",
+        "width": 560,
+        "height": 300,
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Start demo": { "main": [[{ "node": "Demo settings", "type": "main", "index": 0 }]] },
+    "Demo settings": {
+      "main": [[
+        { "node": "Get weather", "type": "main", "index": 0 },
+        { "node": "Call a broken API", "type": "main", "index": 0 }
+      ]]
+    },
+    "Get weather": { "main": [[{ "node": "One item per day", "type": "main", "index": 0 }]] },
+    "One item per day": { "main": [[{ "node": "Warm day?", "type": "main", "index": 0 }]] },
+    "Warm day?": {
+      "main": [
+        [{ "node": "Warm: t-shirt", "type": "main", "index": 0 }],
+        [{ "node": "Cool: jacket", "type": "main", "index": 0 }]
+      ]
+    },
+    "Warm: t-shirt": { "main": [[{ "node": "Merge branches", "type": "main", "index": 0 }]] },
+    "Cool: jacket": { "main": [[{ "node": "Merge branches", "type": "main", "index": 1 }]] },
+    "Merge branches": { "main": [[{ "node": "Wait 2 seconds", "type": "main", "index": 0 }]] },
+    "Wait 2 seconds": { "main": [[{ "node": "Build report", "type": "main", "index": 0 }]] },
+    "Build report": { "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]] },
+    "Gemini Chat Model": { "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]] },
+    "AI Agent": {
+      "main": [[
+        { "node": "Send email", "type": "main", "index": 0 },
+        { "node": "Send Telegram", "type": "main", "index": 0 },
+        { "node": "Post to Discord", "type": "main", "index": 0 }
+      ]]
+    },
+    "Call a broken API": {
+      "main": [
+        [{ "node": "API answered", "type": "main", "index": 0 }],
+        [{ "node": "Error handled", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {}
+}

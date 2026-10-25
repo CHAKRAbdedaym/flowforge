@@ -66,7 +66,9 @@ Port 5679 is used so FlowForge can run next to real n8n (5678). To use another p
 1. **Overview** → **Demo Mode**: a guided tour builds a workflow, shows a form QR code, simulates a submission
    after 20 seconds and runs it live. Without keys the email / Telegram / Discord steps show an orange
    **SIMULATED** badge (only Demo Mode ever simulates).
-2. **Templates** → **CSV pipeline** → **Use template** → **Execute workflow**: watch the data flow node by node.
+2. **Templates** → **Teacher showcase** → **Use template** → **Execute workflow**: real weather, branches, an AI
+   briefing, then email + Telegram + Discord at once, plus a retry / error-output demo (about 10 seconds). Without
+   keys, those 3 nodes show a clear error and the run still finishes. No network at all? Use **CSV pipeline** instead.
 3. **Executions** → open a run → **Time travel**: replay it step by step.
 4. **Workflows** → **Create workflow**: describe an automation in the AI bar at the top, or click **Add first step**.
 
