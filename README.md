@@ -2,15 +2,23 @@
 
 A visual workflow automation tool inspired by [n8n](https://n8n.io), built as a school project: triggers, 50+ nodes,
 expressions, a live execution view, credentials, integrations (Telegram, Discord, Gemini, email, weather), an AI Agent
-and an AI Workflow Builder, all running locally on Node.js + SQLite. It runs side by side with real n8n (FlowForge uses
-port **5679**, n8n uses 5678).
+and an AI Workflow Builder, a time-travel debugger and a guided Demo Mode, all running locally on Node.js + SQLite.
+It runs side by side with real n8n (FlowForge uses port **5679**, n8n uses 5678).
 
-> Feature status (what is implemented and tested): [FEATURES.md](FEATURES.md). What to prepare before a demo: [need.md](need.md).
+**Author:** CHAKRAbdedaym
 
-![Overview dashboard (placeholder)](docs/screenshots/overview.png)
-![Editor with a live run (placeholder)](docs/screenshots/editor-live.png)
+> - **New here? Start with [HOW_TO_RUN.md](HOW_TO_RUN.md)** (install, keys, tests, phone access, common problems).
+> - Feature status (what is implemented and tested): [FEATURES.md](FEATURES.md).
+> - What to prepare before a demo (keys, machine, checklist): [need.md](need.md). Key setup guides: [API_SETUP.md](API_SETUP.md).
 
-> The images above are **placeholders**: see [docs/screenshots/README.md](docs/screenshots/README.md) for the list of files to add.
+## Contents
+
+- [Install and run](#install-and-run) · [Features](#features) · [Tech stack](#tech-stack) · [Project structure](#project-structure)
+- [Architecture](#architecture) · [Webhooks and triggers](#webhooks-and-triggers) · [Email and forms](#email-and-forms)
+- [Data, files and HTTP nodes](#data-files-and-http-nodes) · [Integrations](#integrations-telegram-discord-gemini-weather-chat)
+- [AI Agent and AI Workflow Builder](#ai-agent-and-ai-workflow-builder) · [Demo Mode and time travel](#demo-mode-and-time-travel)
+- [Examples](#examples) · [Testing](#testing) · [Open FlowForge from a phone](#open-flowforge-from-a-phone)
+- [Troubleshooting](#troubleshooting) · [Commands](#commands) · [Teacher demo script](#teacher-demo-script-5-minutes)
 
 ## Install and run
 
@@ -42,8 +50,43 @@ Development with hot reload: `npm run dev` and open http://localhost:5173.
 - **AI Workflow Builder**: describe an automation in a sentence and watch it being drawn.
 - **Product**: workflows list (tags, search, duplicate), import/export, version history, executions with node data,
   variables, settings, template gallery, Overview dashboard.
-- **Demo Mode** and **Time travel debugger** (Phase 8, see the demo script below).
+- **Demo Mode** (guided showcase that never dead-ends) and a **time-travel debugger** (replay any execution step by step).
 - **Security**: owner login, encrypted credentials (AES-256-GCM), secrets never appear in execution data or logs.
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Node.js 20.11+ (22 LTS recommended), TypeScript (strict), npm workspaces |
+| Server | Express 5, `ws` (WebSocket), SQLite (`better-sqlite3`, fallback to Node's built-in `node:sqlite`) |
+| Engine | n8n-style scheduler, expressions in a sandboxed `vm` realm (acorn guard, Luxon), Code node in QuickJS (WASM) |
+| UI | React 19, Vite 6, @xyflow/react (canvas), Tailwind CSS 4, zustand, TanStack Query, CodeMirror, recharts |
+| Integrations | SMTP (nodemailer), Telegram Bot API, Discord webhooks, Google Gemini API, Open-Meteo |
+| Tests | Vitest (~930 unit / API tests), Playwright (47 browser tests) |
+
+## Project structure
+
+```
+shared/            types and pure helpers shared by server and UI (forms, conditions, timeline, version diff)
+server/src/
+  api/             REST routes (/api/...)            public/   public URLs (/webhook, /form, /chat)
+  engine/          scheduler, expressions, queue, execution service, pruning, Code sandbox
+  nodes/           one file per node, grouped: flow, transform, files, network, integrations, triggers, ai
+  credentials/     encrypted credentials, one file per credential type, Test button logic
+  triggers/        active workflows, webhooks, schedules, polls, test listeners, waits
+  integrations/    API clients (Telegram, Discord, Gemini, Open-Meteo) with the docs URL in each header
+  ai/builder/      AI Workflow Builder (prompt, validation, layout, offline fallback)
+  demo/            Demo Mode (showcase workflow, simulated submissions)
+  db/              SQLite driver, migrations, repositories
+server/tests/      Vitest tests (+ mocks of every external API, so tests run offline)
+web/src/
+  editor/          canvas, node panel, parameter forms, expression editor, live view, time travel
+  pages/           Overview, Workflows, Templates, Executions, Credentials, Variables, Settings
+  demo/            Demo Mode overlay and script
+web/e2e/           Playwright browser tests
+examples/          importable example workflows        templates/  extra templates for the gallery
+docs/              design notes (contracts per phase)  data/       local database and files (created at first start, git-ignored)
+```
 
 ## Architecture
 
@@ -160,6 +203,19 @@ execution id immediately, `startNode=<trigger>` picks the trigger. Full details:
   [need.md](need.md) section 2b for what works offline.
 - Examples: "Website chatbot with AI Agent" and "Telegram AI assistant (Agent + memory + tools)".
 
+## Demo Mode and time travel
+
+- **Demo Mode** (sidebar or **Overview**): a 5-step guided showcase. (1) The AI builder creates a "form → weather →
+  email + Telegram + Discord" workflow (Gemini, or the offline template, or a built-in showcase), (2) the form's QR
+  code is shown, (3) FlowForge waits for a real submission from a phone or simulates one after 20 seconds,
+  (4) the run plays live, (5) a results card lists what was sent, simulated or failed. **Skip step** and
+  **Stop demo** are always available. Nodes without a key return output marked `_simulated: true` with an orange
+  **SIMULATED** badge, **only in Demo Mode**; normal runs always show a clear missing-key error.
+- **Time travel**: **Executions** → open a run → **Time travel**. A scrubber at the bottom of the editor replays the
+  run step by step (←/→, Space to play, Esc to leave); each step shows the node's input, output, duration and error.
+  Works for loops, failed and waiting runs. **Re-run from here** starts a new run from that node with the earlier
+  results. Replaying never changes the stored execution.
+
 ## Examples
 
 Import them from **Workflows -> Examples** or the **Templates** page (one click). The JSON files are in [`examples/`](examples).
@@ -178,6 +234,14 @@ Import them from **Workflows -> Examples** or the **Templates** page (one click)
 
 A file with several workflows (the resilience demo) is imported together: the error workflow and the sub-workflow are
 created and linked automatically.
+
+## Testing
+
+```bash
+npm test                              # type checks + unit / API tests (offline: every external API is mocked)
+PW_CHANNEL=chrome npm run test:e2e    # Playwright browser tests (own server on port 5699, throw-away database)
+npm run check                         # real calls to your configured services: OK / FAIL / SKIP
+```
 
 ## Open FlowForge from a phone
 
@@ -250,9 +314,6 @@ Before the class: `npm start`, sign in, open the page on the projector, have you
 Cloudflare tunnel running, see above), and check `npm run check`. Keep real n8n open on http://localhost:5678 in
 another tab if you want to compare. Click labels come from the menu (Overview, Workflows, Templates, Executions,
 Credentials, Variables, Settings).
-
-> The **Demo Mode** and **Time travel** labels below follow the Phase 8 contract
-> ([docs/phase8-contracts.md](docs/phase8-contracts.md)); check them once on the final build.
 
 | # | Minute | Click | Say | If it fails |
 |---|---|---|---|---|
