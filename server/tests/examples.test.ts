@@ -52,9 +52,9 @@ function useWeatherMock(wf: WorkflowRecord): WorkflowRecord {
 }
 
 describe('example workflows', () => {
-  it('lists the twelve examples with a description', async () => {
+  it('lists the thirteen examples with a description', async () => {
     const list = (await agent.get('/api/examples')).body as { id: string; name: string; description: string; nodeCount: number }[];
-    expect(list.map((e) => e.id)).toEqual(['contact-form-discord', 'csv-pipeline', 'daily-weather-email', 'form-to-email', 'resilience-demo', 'rest-api-webhook', 'rss-discord-digest', 'teacher-showcase', 'telegram-ai-assistant', 'telegram-assistant', 'website-chatbot-agent', 'website-chatbot']);
+    expect(list.map((e) => e.id)).toEqual(['contact-form-discord', 'csv-pipeline', 'daily-weather-email', 'form-to-email', 'resilience-demo', 'rest-api-webhook', 'rss-discord-digest', 'teacher-showcase', 'telegram-ai-assistant', 'telegram-assistant', 'webhook-modes-and-wait', 'website-chatbot-agent', 'website-chatbot']);
     for (const example of list) expect(example.description.length, example.id).toBeGreaterThan(40);
     // Every node type and every credential-free default of the examples exists in this build.
     for (const example of list) {

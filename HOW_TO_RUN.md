@@ -63,6 +63,10 @@ Port 5679 is used so FlowForge can run next to real n8n (5678). To use another p
 
 ## 5. Try it in 2 minutes (no key needed)
 
+Tip: `npm run examples:import` adds **all** example workflows to your Workflows page at once (tag
+`teacher-demo`, nothing is duplicated). Run it in a second terminal while FlowForge runs, then refresh the page.
+
+
 1. **Overview** → **Demo Mode**: a guided tour builds a workflow, shows a form QR code, simulates a submission
    after 20 seconds and runs it live. Without keys the email / Telegram / Discord steps show an orange
    **SIMULATED** badge (only Demo Mode ever simulates).

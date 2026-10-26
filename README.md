@@ -231,6 +231,7 @@ Import them from **Workflows -> Examples** or the **Templates** page (one click)
 | REST API with Webhook, Switch and Respond to Webhook | IF + Switch routing, status codes 201/200/204/422/400 | nothing |
 | RSS -> Discord digest | RSS trigger, Aggregate, one Discord embed | Discord |
 | CSV pipeline | Write/read file, parse CSV, Set, Summarize, Sort, report | nothing |
+| Webhook response modes + Wait for approval (3 workflows) | Respond immediately (201 + custom body), respond with the last node, and a Wait that resumes from a link even after a restart | nothing |
 | Resilience demo (3 workflows) | Retry, continue on fail, error output, Error Trigger workflow, sub-workflow | nothing |
 
 A file with several workflows (the resilience demo) is imported together: the error workflow and the sub-workflow are
@@ -307,6 +308,7 @@ Every form URL and QR code now uses that address. The address changes each time 
 | `npm run test:e2e` | Browser tests. Use your installed Chrome with `PW_CHANNEL=chrome npm run test:e2e`, or download Playwright's browser once with `npx playwright install chromium` |
 | `npm run check` | One real call per integration (email, forms, Telegram, Discord, weather, Gemini): OK / FAIL / SKIP. `-- --send` also posts to Discord |
 | `npm run check:email` | Sends a real test email with your SMTP credential (or `.env`) and prints OK / FAIL with the reason. Add `-- someone@example.com` to choose the recipient |
+| `npm run examples:import` | Adds every example workflow to your Workflows page in one go (tag `teacher-demo`); skips the ones you already have. Works while FlowForge runs: refresh the page |
 | `npm run user:reset` | Forgot the password? Deletes user accounts so you can create a new owner (workflows are kept) |
 
 ## Teacher demo script (5 minutes)

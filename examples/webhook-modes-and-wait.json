@@ -1,0 +1,302 @@
+{
+  "name": "Webhook response modes + Wait for approval",
+  "meta": {
+    "description": "Three small workflows to show the webhook response modes (respond immediately with a custom status and body, respond with the output of the last node) and a Wait node that pauses a run until an approval link is opened, even across a server restart. The REST API example shows the third mode (Respond to Webhook node).",
+    "categories": [
+      "Webhooks",
+      "Utilities"
+    ]
+  },
+  "workflows": [
+    {
+      "key": "immediate",
+      "name": "Webhook: respond immediately",
+      "nodes": [
+        {
+          "id": "1",
+          "name": "Webhook",
+          "type": "flowforge.webhook",
+          "typeVersion": 1,
+          "position": [
+            0,
+            0
+          ],
+          "parameters": {
+            "path": "demo/immediate",
+            "httpMethod": "POST",
+            "responseMode": "onReceived",
+            "options": {
+              "responseCode": 201,
+              "responseBody": "{\"accepted\": true}"
+            }
+          }
+        },
+        {
+          "id": "2",
+          "name": "Save order",
+          "type": "flowforge.set",
+          "typeVersion": 1,
+          "position": [
+            240,
+            0
+          ],
+          "parameters": {
+            "includeOtherFields": false,
+            "assignments": {
+              "assignments": [
+                {
+                  "id": "a",
+                  "name": "order",
+                  "value": "={{ $json.body.item }}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "note-0",
+          "name": "How to try it",
+          "type": "flowforge.stickyNote",
+          "typeVersion": 1,
+          "position": [
+            0,
+            -260
+          ],
+          "parameters": {
+            "content": "## Respond immediately\n1. Toggle **Active**.\n2. Open the Webhook node and copy the **Production URL**.\n3. `curl -X POST <url> -H 'Content-Type: application/json' -d '{\"item\":\"book\"}'`\n\nThe caller gets **201** and `{\"accepted\": true}` at once, while the workflow keeps running.",
+            "width": 420,
+            "height": 200,
+            "color": 4
+          }
+        }
+      ],
+      "connections": {
+        "Webhook": {
+          "main": [
+            [
+              {
+                "node": "Save order",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "key": "lastnode",
+      "name": "Webhook: respond with the last node",
+      "nodes": [
+        {
+          "id": "1",
+          "name": "Webhook",
+          "type": "flowforge.webhook",
+          "typeVersion": 1,
+          "position": [
+            0,
+            0
+          ],
+          "parameters": {
+            "path": "demo/last-node",
+            "httpMethod": "POST",
+            "responseMode": "lastNode",
+            "responseData": "firstEntryJson"
+          }
+        },
+        {
+          "id": "2",
+          "name": "Greet",
+          "type": "flowforge.set",
+          "typeVersion": 1,
+          "position": [
+            240,
+            0
+          ],
+          "parameters": {
+            "assignments": {
+              "assignments": [
+                {
+                  "id": "a",
+                  "name": "greeting",
+                  "value": "=Hello {{ $json.body.name }}!",
+                  "type": "string"
+                },
+                {
+                  "id": "b",
+                  "name": "length",
+                  "value": "={{ $json.body.name.length }}",
+                  "type": "number"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "note-0",
+          "name": "How to try it",
+          "type": "flowforge.stickyNote",
+          "typeVersion": 1,
+          "position": [
+            0,
+            -260
+          ],
+          "parameters": {
+            "content": "## Respond when the last node finishes\n1. Toggle **Active**, copy the **Production URL**.\n2. `curl -X POST <url> -H 'Content-Type: application/json' -d '{\"name\":\"Ada\"}'`\n\nThe answer is the output of the last node: `Hello Ada!`.",
+            "width": 420,
+            "height": 200,
+            "color": 4
+          }
+        }
+      ],
+      "connections": {
+        "Webhook": {
+          "main": [
+            [
+              {
+                "node": "Greet",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "key": "wait",
+      "name": "Wait for approval (webhook resume)",
+      "nodes": [
+        {
+          "id": "1",
+          "name": "Webhook",
+          "type": "flowforge.webhook",
+          "typeVersion": 1,
+          "position": [
+            0,
+            0
+          ],
+          "parameters": {
+            "path": "demo/approval",
+            "httpMethod": "POST",
+            "responseMode": "onReceived",
+            "options": {
+              "responseBody": "={\"message\": \"Waiting for approval\"}"
+            }
+          }
+        },
+        {
+          "id": "2",
+          "name": "Remember resume URL",
+          "type": "flowforge.set",
+          "typeVersion": 1,
+          "position": [
+            240,
+            0
+          ],
+          "parameters": {
+            "includeOtherFields": true,
+            "assignments": {
+              "assignments": [
+                {
+                  "id": "a",
+                  "name": "approveUrl",
+                  "value": "={{ $execution.resumeUrl }}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "3",
+          "name": "Wait for approval",
+          "type": "flowforge.wait",
+          "typeVersion": 1,
+          "position": [
+            480,
+            0
+          ],
+          "parameters": {
+            "resume": "webhook",
+            "httpMethod": "GET"
+          }
+        },
+        {
+          "id": "4",
+          "name": "Approved",
+          "type": "flowforge.set",
+          "typeVersion": 1,
+          "position": [
+            720,
+            0
+          ],
+          "parameters": {
+            "assignments": {
+              "assignments": [
+                {
+                  "id": "a",
+                  "name": "decision",
+                  "value": "={{ $json.query.decision }}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "id": "note-0",
+          "name": "How to try it",
+          "type": "flowforge.stickyNote",
+          "typeVersion": 1,
+          "position": [
+            0,
+            -260
+          ],
+          "parameters": {
+            "content": "## Wait for approval (survives a restart)\n1. Toggle **Active**, call the webhook (POST).\n2. The run **waits**: see it in **Executions**.\n3. Open the resume URL from the run (`approveUrl`) with `?decision=yes`.\n\nYou can stop and restart FlowForge in between: the run still resumes.",
+            "width": 420,
+            "height": 200,
+            "color": 4
+          }
+        }
+      ],
+      "connections": {
+        "Webhook": {
+          "main": [
+            [
+              {
+                "node": "Remember resume URL",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Remember resume URL": {
+          "main": [
+            [
+              {
+                "node": "Wait for approval",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        },
+        "Wait for approval": {
+          "main": [
+            [
+              {
+                "node": "Approved",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        }
+      }
+    }
+  ]
+}
